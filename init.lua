@@ -1,4 +1,5 @@
 local log = hs.logger.new('TextProcessor', 'debug')
+require("hs.ipc")
 
 -- Paths
 local dir = os.getenv("HOME") .. "/work/code/python/ai_tools"
@@ -312,6 +313,53 @@ function processAppText()
     end)
 end
 
+local function build_codex_work_test_payload(appName, windowTitle, capturedText)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S %Z")
+    local text = capturedText or ""
+
+    return table.concat({
+        "Codex task test",
+        "",
+        "Source app: " .. (appName or ""),
+        "Source window: " .. (windowTitle or ""),
+        "Captured at: " .. timestamp,
+        "",
+        "Captured text:",
+        text,
+        "",
+        "Instruction:",
+        "This is a Hammerspoon hotkey capture test. Confirm whether the captured text has enough context to become a Codex work item.",
+    }, "\n")
+end
+
+function testCodexSlackTaskCapture()
+    local trigger_window = hs.window.focusedWindow()
+    local trigger_app = (trigger_window and trigger_window:application()) or hs.application.frontmostApplication()
+    local appName = trigger_app and trigger_app:name() or ""
+    local windowTitle = trigger_window and trigger_window:title() or ""
+    local config = app_configs[appName] or app_configs["default"]
+    local originalClipboard = hs.pasteboard.getContents()
+
+    show_status("processing", appName, "Capturing Codex task test payload...")
+    config.copy()
+
+    hs.timer.doAfter(0.3, function()
+        local capturedText = hs.pasteboard.getContents()
+        if not capturedText or capturedText == "" then
+            if originalClipboard then
+                hs.pasteboard.setContents(originalClipboard)
+            end
+            show_status("error", appName, "No text was copied for Codex task test.", true)
+            return
+        end
+
+        local payload = build_codex_work_test_payload(appName, windowTitle, capturedText)
+        hs.pasteboard.setContents(payload)
+        hs.alert.show("Codex task test payload copied to clipboard", 2)
+        log.i("Codex task test payload copied from " .. appName)
+    end)
+end
+
  function urlDecode(str)
     str = str:gsub('+', ' ')  -- Convert '+' to space
     str = str:gsub('%%(%x%x)', function(hex)
@@ -324,6 +372,11 @@ end
 hs.hotkey.bind({ "ctrl", "alt", "cmd" }, "\\", processAppText)
 
 hs.alert.show("Text processor loaded – Ctrl+Alt+Cmd+\\", 3)
+
+local slack_codex_workflow = os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/slack_codex_workflow.lua"
+if hs.fs.attributes(slack_codex_workflow) then
+    dofile(slack_codex_workflow)
+end
 
 hs.urlevent.bind("alert", function(eventName, params)
     local message = urlDecode(params["msg"] )or "Hello from Shortcuts!"
