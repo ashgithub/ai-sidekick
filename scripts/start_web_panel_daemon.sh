@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${ROOT_DIR}"
+source "${SCRIPT_DIR}/common_env.sh"
+
+RESTART=0
+CONFIG_PATH="${AI_TOOLS_WEB_PANEL_CONFIG:-config/codex_web_panel.yaml}"
+PANEL_VISIBILITY=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --restart)
+      RESTART=1
+      shift
+      ;;
+    --config)
+      shift
+      CONFIG_PATH="${1:?--config requires a path}"
+      shift
+      ;;
+    --config=*)
+      CONFIG_PATH="${1#--config=}"
+      shift
+      ;;
+    --panel-visibility)
+      shift
+      PANEL_VISIBILITY="${1:?--panel-visibility requires always, attention, or manual}"
+      shift
+      ;;
+    --panel-visibility=*)
+      PANEL_VISIBILITY="${1#--panel-visibility=}"
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--config PATH] [--panel-visibility always|attention|manual]"
+      echo
+      echo "Starts the local Codex bridge using config/codex_web_panel.yaml by default."
+      echo "--restart kills the current listener on that port before starting."
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--config PATH] [--panel-visibility always|attention|manual]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+CONFIG_JSON="$(
+  AI_TOOLS_WEB_PANEL_CONFIG="${CONFIG_PATH}" "${SCRIPT_DIR}/codex_web_panel_config_json.sh"
+)"
+PORT="$(
+  printf '%s' "${CONFIG_JSON}" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["server"]["port"])'
+)"
+BASE_URL="http://127.0.0.1:${PORT}"
+READY_URL="${BASE_URL}/readyz"
+
+LISTENER_PIDS="$(
+  /usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true
+)"
+
+if [[ "${RESTART}" == "1" && -n "${LISTENER_PIDS}" ]]; then
+  echo "Restarting listener on port ${PORT}."
+  for pid in ${LISTENER_PIDS}; do
+    echo "Stopping PID ${pid}"
+    if ! kill "${pid}"; then
+      echo "Could not stop PID ${pid}. Stop it manually, then rerun this script." >&2
+      exit 1
+    fi
+  done
+
+  for _ in $(seq 1 20); do
+    if ! /usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  if /usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Listener did not stop after SIGTERM; forcing stop."
+    for pid in $(/usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true); do
+      echo "Force stopping PID ${pid}"
+      if ! kill -KILL "${pid}"; then
+        echo "Could not force stop PID ${pid}. Stop it manually, then rerun this script." >&2
+        exit 1
+      fi
+    done
+  fi
+fi
+
+if READY_BODY="$(/usr/bin/curl --silent --show-error --fail "${READY_URL}" 2>/dev/null)"; then
+  echo "Port ${PORT} already has a compatible bridge running."
+  echo "${READY_BODY}"
+  echo "Panel URL: ${BASE_URL}/"
+  echo "Open panel: ./scripts/open_web_panel.sh"
+  exit 0
+fi
+
+if /usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port ${PORT} is already in use by another process, but it is not this ready bridge." >&2
+  echo "Restart it with:" >&2
+  echo "  ./scripts/start_web_panel_daemon.sh --restart" >&2
+  exit 1
+fi
+
+echo "Starting AI Tools Codex bridge on http://127.0.0.1:${PORT}"
+echo "Config: ${CONFIG_PATH}"
+echo "Panel URL: ${BASE_URL}/"
+echo "Open panel: ./scripts/open_web_panel.sh"
+echo "Leave this terminal open. Press Ctrl-C to stop."
+
+if [[ -n "${PANEL_VISIBILITY}" ]]; then
+  export AI_TOOLS_PANEL_VISIBILITY_OVERRIDE="${PANEL_VISIBILITY}"
+fi
+
+exec ${AI_TOOLS_PYTHON_BIN} -m ai_tools.web_panel.app --no-ui --config "${CONFIG_PATH}"

@@ -21,24 +21,8 @@ CAPTURED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
 HOTKEY_PAYLOAD="$(cat <<PAYLOAD
 Slack Codex hotkey task
 
-Captured by: CLI auto-review spike
-Captured at: ${CAPTURED_AT}
-Source app: CLI spike
-Bundle id: unavailable
-Window title: CLI auto-review spike without Slack source
-Captured text capture mode: none
-Captured text selection: empty
-Source conversation: none; do not post a source status message for this spike.
-
-Captured text:
-
-Instructions:
-Use Slack app only. Fail immediately if the Slack connector is unavailable.
-Start every Slack message you send or edit with [from codex :bot:].
-Keep the wand status message and do not use reactions.
-Search for Ashish's newest @codex message from the last five minutes.
-If no recent @codex message is found, stop with the worker prompt's not-found message.
-Do not reply in a source conversation; this synthetic spike has no source Slack conversation.
+Request time: ${CAPTURED_AT}
+Task resolver: latest @codex message from Ashish
 Marker for diagnostic logs only: ${MARKER}
 PAYLOAD
 )"
@@ -48,6 +32,8 @@ echo "Marker: ${MARKER}"
 
 {
   cat "${PROMPT_FILE}"
+  printf '\n\n## Runtime Resolver Settings\n\n'
+  printf 'Maximum source age: 30 minutes\n'
   printf '\n\n## Captured Hotkey Payload\n\n'
   printf '%s\n' "${HOTKEY_PAYLOAD}"
 } | "${CODEX_BIN}" exec \

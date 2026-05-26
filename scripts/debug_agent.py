@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from ai_tools.agent_runtime import AgentRequest, DeepAgentRuntime
-from ai_tools.agent_runtime.runtime import _pretty_stream_event
 from ai_tools.utils.config import get_settings
 
 

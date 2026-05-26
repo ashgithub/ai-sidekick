@@ -1,49 +1,53 @@
 local log = hs.logger.new("SlackCodexWorkflow", "debug")
 
-local workflow_dir = os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow"
-local prompt_file = workflow_dir .. "/prompts/codex_worker.md"
-local codex_bin = os.getenv("CODEX_BIN") or "/opt/homebrew/bin/codex"
-local hotkey_mods = { "ctrl", "alt", "cmd" }
-local hotkey_key = "right"
-local active_tasks = {}
-
-local function append_spike_log(message)
-    local path = "/tmp/slack_codex_workflow_hammerspoon.log"
-    local file = io.open(path, "a")
-    if file then
-        file:write(os.date("%Y-%m-%dT%H:%M:%S%z") .. " " .. message .. "\n")
-        file:close()
-    end
-end
-
-local function submit_codex_app_prompt_from_clipboard()
-    append_spike_log("submit handler invoked")
-    hs.application.launchOrFocus("Codex")
-    hs.timer.doAfter(1.0, function()
-        append_spike_log("creating new chat")
-        hs.eventtap.keyStroke({ "cmd" }, "n")
-        hs.timer.doAfter(1.2, function()
-            append_spike_log("pasting prompt")
-            hs.eventtap.keyStroke({ "cmd" }, "v")
-            hs.timer.doAfter(0.5, function()
-                append_spike_log("submitting prompt")
-                hs.eventtap.keyStroke({ "cmd" }, "return")
-            end)
-        end)
-    end)
-end
-
-_G.slackCodexSubmitPromptFromClipboard = submit_codex_app_prompt_from_clipboard
-
-local function read_file(path)
-    local file = io.open(path, "r")
-    if not file then
+local function script_dir()
+    local source = debug.getinfo(1, "S").source
+    if not source or source:sub(1, 1) ~= "@" then
         return nil
     end
+    return source:sub(2):match("(.*/)")
+end
 
-    local contents = file:read("*a")
-    file:close()
-    return contents
+local this_script_dir = script_dir() or (os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/")
+local repo_root = this_script_dir:gsub("/slack_codex_workflow/hammerspoon/$", "")
+local manual_daemon_script = repo_root .. "/scripts/start_web_panel_daemon.sh"
+local config_script = repo_root .. "/scripts/codex_web_panel_config_json.sh"
+local function load_config()
+    local output, ok = hs.execute(config_script, true)
+    if ok and output and output ~= "" then
+        local parsed = hs.json.decode(output)
+        if parsed then
+            return parsed
+        end
+    end
+    return {
+        server = { port = 8765 },
+        panel = { visibility = "manual", open_hotkey = { mods = {}, key = "f5" } },
+    }
+end
+
+local config = load_config()
+local panel_port = tostring((config.server and config.server.port) or "8765")
+local panel_visibility = (config.panel and config.panel.visibility) or "manual"
+local panel_open_command = (config.panel and config.panel.open_command) or "scripts/open_web_panel.sh"
+local open_panel_script = repo_root .. "/" .. panel_open_command
+local panel_open_hotkey = (config.panel and config.panel.open_hotkey) or {}
+local panel_open_hotkey_mods = panel_open_hotkey.mods or {}
+local panel_open_hotkey_key = panel_open_hotkey.key or "f5"
+local ready_url = "http://127.0.0.1:" .. panel_port .. "/readyz"
+local ingest_url = "http://127.0.0.1:" .. panel_port .. "/ingest/slack"
+local hotkey_mods = { "ctrl", "alt", "cmd" }
+local hotkey_key = "right"
+
+local function open_panel()
+    local task = hs.task.new(open_panel_script, function(exit_code, stdout, stderr)
+        if exit_code ~= 0 then
+            log.e("Open panel failed: " .. tostring(stderr or stdout or "unknown error"))
+        end
+    end)
+    if not task:start() then
+        log.e("Open panel task failed to start")
+    end
 end
 
 local function now_iso()
@@ -56,102 +60,59 @@ local function frontmost_context()
 
     return {
         app_name = app and app:name() or "",
-        bundle_id = app and app:bundleID() or "",
-        window_title = window and window:title() or "",
         captured_at = now_iso(),
     }
 end
 
-local function build_payload(context, copied_text)
-    local selection_state = "present"
-    if copied_text == nil or copied_text == "" then
-        selection_state = "empty"
-    end
-
+local function build_payload(context)
     local lines = {
         "Slack Codex hotkey task",
         "",
-        "Captured by: Hammerspoon",
-        "Captured at: " .. context.captured_at,
-        "Source app: " .. context.app_name,
-        "Bundle id: " .. context.bundle_id,
-        "Window title: " .. context.window_title,
-        "Captured text capture mode: none",
-        "Captured text selection: " .. selection_state,
-        "",
-        "Captured text:",
-        copied_text or "",
-        "",
-        "Instructions:",
-        "Use Slack app only. Fail immediately if the Slack connector is unavailable.",
-        "Start every Slack message you send or edit with [from codex :bot:].",
-        "Keep the wand status message and do not use reactions.",
-        "Search Slack for Ashish's newest @codex message from the last five minutes.",
-        "Use the found @codex message and thread as the source task and audit trail.",
-        "If no recent @codex message is found, stop with the not-found message from the worker prompt.",
-        "Do not use the old queue channel.",
-        "Complete the requested work, reply in the original Slack conversation when appropriate, and update the source status thread reply.",
+        "Request time: " .. context.captured_at,
+        "Task resolver: latest @codex message from Ashish",
     }
 
     return table.concat(lines, "\n")
 end
 
-local function build_full_prompt(payload)
-    local worker_prompt = read_file(prompt_file)
-    if not worker_prompt then
-        return nil, "worker prompt not found: " .. prompt_file
-    end
-
-    return worker_prompt .. "\n\n## Captured Hotkey Payload\n\n" .. payload .. "\n", nil
+local function show_bridge_start_error(detail)
+    local message = "Start the Codex bridge first: " .. manual_daemon_script
+    hs.alert.show(message, 6)
+    log.e(message .. " | " .. tostring(detail or "local bridge unavailable"))
 end
 
-local function launch_codex_app_worker(payload)
-    local full_prompt, err = build_full_prompt(payload)
-    if not full_prompt then
-        hs.alert.show("Codex Slack worker prompt missing", 4)
-        log.e(err)
-        return
-    end
+local function submit_local_bridge_request(payload)
+    local source_id = "slack-" .. tostring(os.time())
+    local request_body = hs.json.encode({
+        source_id = source_id,
+        source_label = "Slack",
+        prompt = payload,
+    })
 
-    if not hs.pasteboard.setContents(full_prompt) then
-        hs.alert.show("Codex Slack worker failed to prepare prompt", 4)
-        log.e("Failed to write Codex worker prompt to clipboard")
-        return
-    end
-
-    local task
-
-    task = hs.task.new(codex_bin, function(exit_code, stdout, stderr)
-        active_tasks[task] = nil
-
-        if exit_code == 0 then
-            log.i("Codex.app workspace opened")
-            if stdout and stdout ~= "" then
-                log.d(stdout)
+    hs.http.asyncPost(ingest_url, request_body, { ["Content-Type"] = "application/json" }, function(status, body, headers)
+        if status == 200 then
+            hs.alert.show("Queued Codex task", 1.5)
+            log.i("Queued Slack task in local bridge")
+            local response = hs.json.decode(body or "{}") or {}
+            if (response.panel_visibility or panel_visibility) == "always" then
+                open_panel()
             end
             return
         end
 
-        local detail = stderr
-        if not detail or detail == "" then
-            detail = stdout or "unknown error"
+        show_bridge_start_error("POST " .. ingest_url .. " failed with status " .. tostring(status) .. " body=" .. tostring(body))
+    end)
+end
+
+local function queue_local_bridge_request(payload)
+    hs.http.asyncGet(ready_url, {}, function(status, body, headers)
+        if status == 200 then
+            submit_local_bridge_request(payload)
+            return
         end
-        hs.alert.show("Codex.app worker launch failed", 4)
-        log.e("Codex.app worker launch failed: " .. tostring(detail))
-    end, { "app", workflow_dir })
 
-    active_tasks[task] = task
-
-    if task:start() then
-        hs.alert.show("Opening Codex Slack worker", 2)
-        log.i("Codex.app worker handoff started")
-        hs.timer.doAfter(1.5, submit_codex_app_prompt_from_clipboard)
-        return
-    end
-
-    active_tasks[task] = nil
-    hs.alert.show("Codex.app worker failed to start", 4)
-    log.e("Codex.app worker failed to start")
+        show_bridge_start_error("GET " .. ready_url .. " failed with status " .. tostring(status) .. " body=" .. tostring(body))
+    end)
 end
 
 local function run_slack_codex_workflow()
@@ -163,14 +124,13 @@ local function run_slack_codex_workflow()
         return
     end
 
-    hs.alert.show("Looking for recent @codex task", 1.5)
+    hs.alert.show("Looking for latest @codex task", 1.5)
 
-    local copied_text = ""
-    local payload = build_payload(context, copied_text)
-    launch_codex_app_worker(payload)
+    local payload = build_payload(context)
+    queue_local_bridge_request(payload)
 end
 
 hs.hotkey.bind(hotkey_mods, hotkey_key, run_slack_codex_workflow)
-hs.urlevent.bind("slackCodexSubmitPrompt", submit_codex_app_prompt_from_clipboard)
+hs.hotkey.bind(panel_open_hotkey_mods, panel_open_hotkey_key, open_panel)
 hs.alert.show("Slack Codex workflow loaded", 2)
 log.i("Loaded Slack Codex workflow hotkey: ctrl+alt+cmd+right")

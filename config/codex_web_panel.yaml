@@ -1,0 +1,35 @@
+# Local bridge HTTP settings.
+# Docs: docs/slack-codex-workflow.md#bridge-readiness
+server:
+  host: 127.0.0.1
+  port: 8765
+
+# Controls when the companion panel opens.
+# Use "always" while debugging; switch to "attention" once stable.
+panel:
+  visibility: always # always | attention | manual
+  open_command: scripts/open_web_panel.sh
+  open_hotkey:
+    # Function-key shortcut to open the companion on demand.
+    # Plain F5 is easy to reach and unused by this repo's Hammerspoon bindings.
+    # If browser refresh conflicts with your muscle memory, change to f6.
+    mods: []
+    key: f5
+
+# Settings passed to Codex app-server thread creation.
+# Use "inherit" to use ~/.codex/config.toml instead of forcing a POC-specific model.
+codex:
+  model: gpt-5.4-mini
+  approval_policy: on-request
+  approvals_reviewer: auto_review
+  personality: pragmatic
+  cwd: .
+
+# Slack is the first source adapter; prompt body stays in Markdown for review.
+slack:
+  enabled: true
+  prompt_file: slack_codex_workflow/prompts/codex_worker.md
+  status_mode: source_message # source_message | final_only
+  # Latest @codex is used without a hard Slack `after` filter. If it is older
+  # than this threshold, Codex stops and asks for a fresh request/confirmation.
+  latest_message_max_age_minutes: 30

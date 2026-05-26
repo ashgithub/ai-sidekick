@@ -4,11 +4,12 @@ Hotkey-driven Slack-to-Codex workflow for turning Slack messages into Codex work
 
 ## Contract
 
-- Use Slack app only.
+- Use Slack to resolve the source task and post replies/status updates.
+- Use other connectors when the requested work requires them.
 - Every Slack message from the worker starts with `[from codex :bot:]`.
 - The wand status message stays in the source thread.
 - No reactions are used.
-- The latest recent `@codex` message from Ashish is the queue.
+- The latest `@codex` message from Ashish is the queue.
 - `#codex-work` is not used.
 - No local queue is used.
 - Task state is tracked in the source Slack thread with a source status message for visible milestone updates.
@@ -17,22 +18,89 @@ Hotkey-driven Slack-to-Codex workflow for turning Slack messages into Codex work
 
 `ctrl+option+command+right`
 
-The hotkey captures local Slack window context, opens the pinned Codex.app workspace, creates a new chat, and submits the worker prompt there so Slack MCP writes can be approved interactively. It does not copy selected Slack text or read existing clipboard content. Hammerspoon shows a generic `Looking for recent @codex task` notification; Codex confirms the actual source after Slack search.
+The hotkey posts minimal resolver metadata to the local resident Codex bridge. Start the bridge first with `scripts/start_web_panel_daemon.sh`; Hammerspoon does not auto-start it. Hammerspoon checks `GET /readyz` before submitting work. If the local bridge is unavailable or not ready, Hammerspoon stops and shows the script path to run instead of falling back to Codex.app. It does not copy selected Slack text or read existing clipboard content. Hammerspoon shows `Looking for latest @codex task` while posting and `Queued Codex task` when the local bridge accepts the request.
+
+Panel-open hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey only opens the local panel; it does not submit Slack work.
+
+The panel is intentionally a compact sidekick, not a dashboard. It shows the current invocation, current outcome, progress phases, response, and approvals. Prompt and trace details are available only in collapsed debug sections.
 
 ## Flow
 
 1. Post a Slack message that starts with or contains `@codex`.
-2. Press `ctrl+option+command+right` within five minutes.
-3. Hammerspoon captures app/window/context details only.
-4. Hammerspoon copies the full worker prompt to the clipboard.
-5. Hammerspoon opens Codex.app on this workflow workspace and submits the prompt in a new chat.
-6. Codex verifies Slack MCP is available.
-7. Codex searches for Ashish's newest `@codex` message from the last five minutes.
-8. If no recent match is found, Codex stops with the not-found message.
-9. If a match is found, Codex reads that source thread.
-10. Codex posts a source status thread reply that starts with `[from codex :bot:] :magic_wand: Found recent @codex task`.
-11. Codex edits that same source status message for important milestones.
-12. Codex completes the work, replies in the original Slack conversation when appropriate, and updates the source status message to completed or failed.
+2. Start `scripts/start_web_panel_daemon.sh` in a terminal if it is not already running.
+3. Press `ctrl+option+command+right`.
+4. Hammerspoon sends only request time and resolver intent.
+5. Hammerspoon checks `http://127.0.0.1:<port>/readyz`.
+6. Hammerspoon posts the captured payload to `http://127.0.0.1:<port>/ingest/slack` only when the bridge reports ready.
+7. If the bridge is unavailable, not ready, or rejects the POST, Hammerspoon stops and shows the script path to run.
+8. If the local bridge accepts the request, it starts or resumes the resident Codex runtime.
+9. The panel opens immediately when `panel.visibility: always`; with `attention`, it stays hidden unless approvals or failures need attention.
+10. Codex verifies Slack MCP is available.
+11. Codex searches for Ashish's latest `@codex` message without a hard `after` filter.
+12. If no match is found, Codex stops with the not-found message.
+13. If the latest match is older than `slack.latest_message_max_age_minutes`, Codex stops with the stale-source message.
+14. If a non-stale match is found, Codex reads that source thread.
+15. Codex posts a source status thread reply that starts with `[from codex :bot:] :magic_wand: Found recent @codex task`.
+16. Codex edits that same source status message for important milestones.
+17. Codex completes the work, replies in the original Slack conversation when appropriate, and updates the source status message to completed or failed.
+
+## Bridge Readiness
+
+`GET /healthz` reports only that the HTTP process is alive. `GET /readyz` is the shortcut gate: it returns JSON and HTTP 200 only when the configured Codex binary is executable. Hammerspoon uses `/readyz` before `POST /ingest/slack`; failed readiness is a hard stop with a message to start the bridge manually.
+
+The bridge keeps only the current invocation in memory. It does not persist run history, replay transcripts, or maintain a queue file. Restarting the daemon clears the visible run state.
+
+`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, function-key opener, Codex model/thread options, Slack prompt path, and stale-source threshold. The comments in that file document the current options.
+
+Slack resolver stop conditions are surfaced as explicit run states. If no `@codex` message is found, the run becomes `not_found`. If the latest message is older than `slack.latest_message_max_age_minutes`, the run becomes `stale_source`.
+
+`scripts/start_web_panel_daemon.sh` is bridge-only, but it still serves the web panel at `http://127.0.0.1:8765/`. Use `scripts/open_web_panel.sh` to inspect the current invocation in your browser. Use `scripts/run_web_panel.sh` only when you specifically want the pywebview shell. Both commands bind the same configured port, so run one bridge at a time.
+
+If port `8765` is occupied by an older or unrelated process, `scripts/start_web_panel_daemon.sh` prints a port diagnostic and exits. Restart on the same default port with:
+
+```bash
+./scripts/start_web_panel_daemon.sh --restart
+```
+
+Restart sends `SIGTERM` to the listener on the selected port, waits briefly, then uses `SIGKILL` only if the port is still held.
+
+To temporarily override panel behavior for a manual daemon run:
+
+```bash
+./scripts/start_web_panel_daemon.sh --restart --panel-visibility attention
+```
+
+## Manual Testing
+
+Run these checks from the POC worktree:
+
+```bash
+cd /private/tmp/ai_tools-shortcut-web-panel-poc
+./scripts/start_web_panel_daemon.sh
+```
+
+Leave that terminal open. In a second terminal:
+
+```bash
+curl --fail --silent http://127.0.0.1:8765/healthz
+curl --fail --silent http://127.0.0.1:8765/readyz
+curl --fail --silent http://127.0.0.1:8765/api/current-run
+curl --fail --silent http://127.0.0.1:8765/api/runs
+```
+
+Then reload Hammerspoon, focus Slack, post or locate an `@codex` message from Ashish, and press `ctrl+option+command+right`. Expected result: Hammerspoon shows `Queued Codex task`; the bridge receives the request; Codex.app does not open. With the default `panel.visibility: always`, the panel opens for live progress.
+
+For visible UI testing while the daemon is running:
+
+```bash
+./scripts/open_web_panel.sh
+```
+
+Press the configured panel-open function key, `F5` by default, to open the same panel on demand. The web panel can submit a manual test run through its prompt field. If you want the pywebview shell instead of the browser, stop the bridge-only script and run `./scripts/run_web_panel.sh`.
+
+To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Start the Codex bridge first: .../scripts/start_web_panel_daemon.sh`; it should not open Codex.app.
+
+Current scope: this POC supports Slack hotkey ingress and manual web-panel test runs. The Tk `ai_tools` client and zsh widget are not wired to the resident bridge yet.
 
 ## Source Resolver Cache
 
@@ -42,15 +110,16 @@ It is not a queue, spool, inbox, or task-state file. The worker does not use it 
 
 ## Status Messages
 
-Status is tracked by posted and edited Slack messages, not reactions. The source thread gets one source status message after the recent `@codex` message is found.
+Status is tracked by posted and edited Slack messages, not reactions. The source thread gets one source status message after the latest non-stale `@codex` message is found.
 
 ## Files
 
-- `slack_codex_workflow/hammerspoon/slack_codex_workflow.lua`: hotkey capture and Codex.app handoff.
+- `slack_codex_workflow/hammerspoon/slack_codex_workflow.lua`: hotkey capture and local bridge queueing.
 - `slack_codex_workflow/config/source_resolver_cache.json`: optional exact-match Slack source resolver cache.
+- `scripts/start_web_panel_daemon.sh`: manual foreground launcher for the resident local bridge.
+- `scripts/run_web_panel.sh`: developer launcher for the local web panel.
 - `slack_codex_workflow/scripts/launch_codex_worker.sh`: manual diagnostic path for `codex exec`; not used by the hotkey because Slack MCP writes need interactive approval.
 - `slack_codex_workflow/scripts/spike_cli_auto_review.sh`: synthetic `codex exec` spike using `approvals_reviewer="auto_review"`.
-- `slack_codex_workflow/scripts/spike_open_codex_app.sh`: synthetic Codex.app handoff test.
 - `slack_codex_workflow/prompts/codex_worker.md`: worker instructions.
 
 ## Install
