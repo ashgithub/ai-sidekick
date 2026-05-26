@@ -5,7 +5,7 @@ oci:
   base_url: "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions/v1"
   compartment: "ocid1.compartment.oc1..aaaaaaaac3cxhzoka75zaaysugzmvhm3ni3keqvikawjxvwpz26mud622owa"
   profile: "API-USER"
-  default_model: "openai.gpt-5.4"
+  default_model: "openai.gpt-5.4-mini"
 
 model_cache:
   enabled: true

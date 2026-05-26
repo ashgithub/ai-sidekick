@@ -75,7 +75,7 @@ To temporarily override panel behavior for a manual daemon run:
 Run these checks from the POC worktree:
 
 ```bash
-cd /private/tmp/ai_tools-shortcut-web-panel-poc
+cd /Users/ashish/work/code/python/ai_tools
 ./scripts/start_web_panel_daemon.sh
 ```
 

@@ -1,21 +1,6 @@
 ---
 name: refresh-llms
 description: Refresh the local OCI model cache used by the UI model selector.
-inputs:
-  input_text:
-    required: false
-    type: string
-  action:
-    required: true
-    type: string
-outputs:
-  text:
-    type: string
-    description: Refresh status message.
-model_policy:
-  allow_user_selected_model: false
-ui_tabs: ["Refresh"]
-execution_mode: builtin.refresh_models
 ---
 Refresh the local model cache by running the OCI refresh workflow.
 
