@@ -18,7 +18,7 @@ Hotkey-driven Slack-to-Codex workflow for turning Slack messages into Codex work
 
 `ctrl+option+command+right`
 
-The hotkey posts minimal resolver metadata to the local resident Codex bridge. Start the bridge first with `scripts/start_web_panel_daemon.sh`; Hammerspoon does not auto-start it. Hammerspoon checks `GET /readyz` before submitting work. If the local bridge is unavailable or not ready, Hammerspoon stops and shows the script path to run instead of falling back to Codex.app. It does not copy selected Slack text or read existing clipboard content. Hammerspoon shows `Looking for latest @codex task` while posting and `Queued Codex task` when the local bridge accepts the request.
+The hotkey posts minimal resolver metadata to the local resident Codex bridge. Start the bridge first with `scripts/start_web_panel_daemon.sh`; Hammerspoon does not auto-start it. Hammerspoon checks `GET /readyz` before submitting work. If the local bridge is unavailable or not ready, Hammerspoon stops and shows the script path to run instead of falling back to Codex.app. It does not copy selected Slack text or read existing clipboard content. Hammerspoon shows `Checking Codex bridge...` while checking readiness and `Queued Codex task` when the local bridge accepts the request.
 
 Panel-open hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey only opens the local panel; it does not submit Slack work.
 
@@ -98,15 +98,9 @@ For visible UI testing while the daemon is running:
 
 Press the configured panel-open function key, `F5` by default, to open the same panel on demand. The web panel can submit a manual test run through its prompt field. If you want the pywebview shell instead of the browser, stop the bridge-only script and run `./scripts/run_web_panel.sh`.
 
-To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Start the Codex bridge first: .../scripts/start_web_panel_daemon.sh`; it should not open Codex.app.
+To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Codex bridge is not running` and a `Start: .../scripts/start_web_panel_daemon.sh --restart` hint; it should not open Codex.app.
 
 Current scope: this POC supports Slack hotkey ingress and manual web-panel test runs. The Tk `ai_tools` client and zsh widget are not wired to the resident bridge yet.
-
-## Source Resolver Cache
-
-`slack_codex_workflow/config/source_resolver_cache.json` is a legacy source resolver cache for frequently used Slack channels and DMs. It maps exact Slack window titles or aliases to known Slack channel or user IDs.
-
-It is not a queue, spool, inbox, or task-state file. The worker does not use it to choose the source task and does not update it during this workflow.
 
 ## Status Messages
 
@@ -115,7 +109,6 @@ Status is tracked by posted and edited Slack messages, not reactions. The source
 ## Files
 
 - `slack_codex_workflow/hammerspoon/slack_codex_workflow.lua`: hotkey capture and local bridge queueing.
-- `slack_codex_workflow/config/source_resolver_cache.json`: optional exact-match Slack source resolver cache.
 - `scripts/start_web_panel_daemon.sh`: manual foreground launcher for the resident local bridge.
 - `scripts/run_web_panel.sh`: developer launcher for the local web panel.
 - `slack_codex_workflow/scripts/launch_codex_worker.sh`: manual diagnostic path for `codex exec`; not used by the hotkey because Slack MCP writes need interactive approval.

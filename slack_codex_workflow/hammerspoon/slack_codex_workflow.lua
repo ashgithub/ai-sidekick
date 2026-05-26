@@ -12,6 +12,8 @@ local this_script_dir = script_dir() or (os.getenv("HOME") .. "/work/code/python
 local repo_root = this_script_dir:gsub("/slack_codex_workflow/hammerspoon/$", "")
 local manual_daemon_script = repo_root .. "/scripts/start_web_panel_daemon.sh"
 local config_script = repo_root .. "/scripts/codex_web_panel_config_json.sh"
+local config_load_failed = false
+
 local function load_config()
     local output, ok = hs.execute(config_script, true)
     if ok and output and output ~= "" then
@@ -20,6 +22,7 @@ local function load_config()
             return parsed
         end
     end
+    config_load_failed = true
     return {
         server = { port = 8765 },
         panel = { visibility = "manual", open_hotkey = { mods = {}, key = "f5" } },
@@ -39,13 +42,25 @@ local ingest_url = "http://127.0.0.1:" .. panel_port .. "/ingest/slack"
 local hotkey_mods = { "ctrl", "alt", "cmd" }
 local hotkey_key = "right"
 
+local function show_lines(lines, duration)
+    hs.alert.show(table.concat(lines, "\n"), duration)
+end
+
 local function open_panel()
     local task = hs.task.new(open_panel_script, function(exit_code, stdout, stderr)
         if exit_code ~= 0 then
+            show_lines({
+                "Could not open Codex sidekick",
+                "Check bridge or run: " .. open_panel_script,
+            }, 5)
             log.e("Open panel failed: " .. tostring(stderr or stdout or "unknown error"))
         end
     end)
     if not task:start() then
+        show_lines({
+            "Could not open Codex sidekick",
+            "Check bridge or run: " .. open_panel_script,
+        }, 5)
         log.e("Open panel task failed to start")
     end
 end
@@ -76,9 +91,10 @@ local function build_payload(context)
 end
 
 local function show_bridge_start_error(detail)
-    local message = "Start the Codex bridge first: " .. manual_daemon_script
-    hs.alert.show(message, 6)
-    log.e(message .. " | " .. tostring(detail or "local bridge unavailable"))
+    local message = "Codex bridge is not running"
+    local start_hint = "Start: " .. manual_daemon_script .. " --restart"
+    show_lines({ message, start_hint }, 6)
+    log.e(message .. " | " .. start_hint .. " | " .. tostring(detail or "local bridge unavailable"))
 end
 
 local function submit_local_bridge_request(payload)
@@ -124,7 +140,7 @@ local function run_slack_codex_workflow()
         return
     end
 
-    hs.alert.show("Looking for latest @codex task", 1.5)
+    hs.alert.show("Checking Codex bridge...", 1.2)
 
     local payload = build_payload(context)
     queue_local_bridge_request(payload)
@@ -132,5 +148,17 @@ end
 
 hs.hotkey.bind(hotkey_mods, hotkey_key, run_slack_codex_workflow)
 hs.hotkey.bind(panel_open_hotkey_mods, panel_open_hotkey_key, open_panel)
-hs.alert.show("Slack Codex workflow loaded", 2)
-log.i("Loaded Slack Codex workflow hotkey: ctrl+alt+cmd+right")
+if config_load_failed then
+    show_lines({
+        "Codex shortcuts loaded with fallback config",
+        "Slack: ctrl+alt+cmd+right | Panel: " .. string.upper(panel_open_hotkey_key),
+        "Bridge starts manually",
+    }, 4)
+else
+    show_lines({
+        "Codex shortcuts loaded",
+        "Slack: ctrl+alt+cmd+right | Panel: " .. string.upper(panel_open_hotkey_key),
+        "Bridge starts manually",
+    }, 4)
+end
+log.i("Loaded Codex shortcuts: slack=ctrl+alt+cmd+right panel=" .. panel_open_hotkey_key)

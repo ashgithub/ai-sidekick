@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,19 +104,14 @@ def test_worker_forbids_reaction_api_usage() -> None:
     assert "source status message" in prompt
 
 
-def test_source_resolver_cache_is_durable_config_not_task_state() -> None:
+def test_no_legacy_source_resolver_cache_or_local_state_file() -> None:
     prompt = read_workflow_file("prompts", "codex_worker.md")
     docs = read_doc_file("slack-codex-workflow.md")
-    cache = json.loads(read_workflow_file("config", "source_resolver_cache.json"))
 
     assert "source_resolver_cache.json" not in prompt
     assert "window title" not in prompt.lower()
-    assert "source resolver cache" in docs
-    assert cache["version"] == 1
-    assert "window_title_aliases" in cache
-    assert "channel_aliases" in cache
-    assert "user_aliases" in cache
-    assert "schema" in cache
+    assert "source resolver cache" not in docs.lower()
+    assert not (WORKFLOW / "config" / "source_resolver_cache.json").exists()
 
 
 def test_cli_auto_review_spike_uses_exec_with_auto_review() -> None:
@@ -146,7 +140,14 @@ def test_hammerspoon_hotkey_requires_manually_started_bridge() -> None:
     assert "panel_open_hotkey_key" in lua
     assert "hs.hotkey.bind(panel_open_hotkey_mods" in lua
     assert "scripts/start_web_panel_daemon.sh" in lua
-    assert "Start the Codex bridge first" in lua
+    assert "Codex shortcuts loaded" in lua
+    assert "fallback config" in lua
+    assert "Bridge starts manually" in lua
+    assert "Checking Codex bridge" in lua
+    assert "Codex bridge is not running" in lua
+    assert "Start: " in lua
+    assert "Could not open Codex sidekick" in lua
+    assert "Start the Codex bridge first" not in lua
     assert "scripts/ensure_web_panel.sh" not in lua
     assert "Local bridge unavailable; opening Codex Slack worker" not in lua
     assert "launch_codex_app_fallback" not in lua
@@ -154,7 +155,7 @@ def test_hammerspoon_hotkey_requires_manually_started_bridge() -> None:
     assert "hs.application.launchOrFocus" not in lua
     assert "hs.pasteboard.setContents" not in lua
     assert "Task resolver: latest @codex message from Ashish" in lua
-    assert "Looking for latest @codex task" in lua
+    assert "Looking for latest @codex task" not in lua
     assert "#codex-work" not in lua
 
 
