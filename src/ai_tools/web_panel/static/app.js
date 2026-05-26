@@ -1,6 +1,7 @@
 const runSummaryEl = document.getElementById("run-summary");
 const promptViewEl = document.getElementById("prompt-view");
 const responseViewEl = document.getElementById("response-view");
+const rawStreamEl = document.getElementById("raw-stream-view");
 const eventLogEl = document.getElementById("event-log");
 const toolLogEl = document.getElementById("tool-log");
 const approvalBoxEl = document.getElementById("approval-box");
@@ -9,6 +10,7 @@ const sourceLineEl = document.getElementById("source-line");
 const composerLabelEl = document.getElementById("composer-label");
 const composerInputEl = document.getElementById("composer-input");
 const refreshBtn = document.getElementById("refresh-btn");
+const newOutputBtn = document.getElementById("new-output-btn");
 const submitComposerBtn = document.getElementById("submit-composer-btn");
 const newTaskBtn = document.getElementById("new-task-btn");
 const phaseListEl = document.getElementById("phase-list");
@@ -64,6 +66,134 @@ function summaryTitle(run) {
     return "Approval needed";
   }
   return run.last_summary || statusLabel(run.status);
+}
+
+function nearResponseBottom() {
+  return responseViewEl.scrollHeight - responseViewEl.scrollTop - responseViewEl.clientHeight < 48;
+}
+
+function scrollResponseToBottom() {
+  responseViewEl.scrollTop = responseViewEl.scrollHeight;
+  newOutputBtn.hidden = true;
+}
+
+function appendInlineText(parent, text) {
+  text.split(/(`[^`]+`)/g).filter(Boolean).forEach((part) => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 1) {
+      const code = document.createElement("code");
+      code.textContent = part.slice(1, -1);
+      parent.appendChild(code);
+      return;
+    }
+    parent.appendChild(document.createTextNode(part));
+  });
+}
+
+function renderReadableText(container, text, placeholder) {
+  container.innerHTML = "";
+  const content = (text || "").trim();
+  if (!content) {
+    const empty = document.createElement("p");
+    empty.className = "answer-placeholder";
+    empty.textContent = placeholder;
+    container.appendChild(empty);
+    return;
+  }
+
+  let paragraphLines = [];
+  let listEl = null;
+  let codeLines = [];
+  let inCode = false;
+
+  function flushParagraph() {
+    if (!paragraphLines.length) {
+      return;
+    }
+    const paragraph = document.createElement("p");
+    appendInlineText(paragraph, paragraphLines.join(" "));
+    container.appendChild(paragraph);
+    paragraphLines = [];
+  }
+
+  function closeList() {
+    listEl = null;
+  }
+
+  function flushCode() {
+    const pre = document.createElement("pre");
+    pre.className = "answer-code";
+    const code = document.createElement("code");
+    code.textContent = codeLines.join("\n");
+    pre.appendChild(code);
+    container.appendChild(pre);
+    codeLines = [];
+  }
+
+  content.split("\n").forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      closeList();
+      if (inCode) {
+        flushCode();
+      }
+      inCode = !inCode;
+      return;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      return;
+    }
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      return;
+    }
+
+    const heading = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      const title = document.createElement("h3");
+      appendInlineText(title, heading[1]);
+      container.appendChild(title);
+      return;
+    }
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      if (!listEl || listEl.tagName !== "UL") {
+        listEl = document.createElement("ul");
+        container.appendChild(listEl);
+      }
+      const item = document.createElement("li");
+      appendInlineText(item, bullet[1]);
+      listEl.appendChild(item);
+      return;
+    }
+
+    const numbered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (numbered) {
+      flushParagraph();
+      if (!listEl || listEl.tagName !== "OL") {
+        listEl = document.createElement("ol");
+        container.appendChild(listEl);
+      }
+      const item = document.createElement("li");
+      appendInlineText(item, numbered[1]);
+      listEl.appendChild(item);
+      return;
+    }
+
+    closeList();
+    paragraphLines.push(trimmed);
+  });
+
+  if (inCode) {
+    flushCode();
+  }
+  flushParagraph();
 }
 
 function setComposerForRun(run) {
@@ -201,17 +331,28 @@ function renderApproval(run) {
 
 function renderRun(run) {
   currentRun = run;
+  const shouldStickToBottom = nearResponseBottom();
   sourceLineEl.textContent = `${run.source.source_label} - ${run.thread_id || "Starting"}`;
   activeStatusEl.textContent = statusLabel(run.status);
   activeStatusEl.className = `status-pill ${statusClass(run.status)}`;
   renderSummary(run);
   renderPhaseList(run);
-  responseViewEl.textContent = run.response_text || "No response yet.";
+  renderReadableText(
+    responseViewEl,
+    run.response_text || "",
+    run.raw_response_text ? "Writing final answer..." : "No answer yet.",
+  );
+  rawStreamEl.textContent = run.raw_response_text || "No raw stream yet.";
   promptViewEl.textContent = run.prompt || "No prompt yet.";
   renderTrace(run);
   renderTools(run);
   renderApproval(run);
   setComposerForRun(run);
+  if (shouldStickToBottom) {
+    scrollResponseToBottom();
+  } else if (["queued", "starting", "running"].includes(run.status)) {
+    newOutputBtn.hidden = false;
+  }
 }
 
 function renderIdle() {
@@ -221,7 +362,8 @@ function renderIdle() {
   activeStatusEl.className = "status-pill status-idle";
   runSummaryEl.textContent = "Waiting for a shortcut or task.";
   phaseListEl.innerHTML = "<li>No active invocation yet.</li>";
-  responseViewEl.textContent = "No response yet.";
+  renderReadableText(responseViewEl, "", "No answer yet.");
+  rawStreamEl.textContent = "No raw stream yet.";
   promptViewEl.textContent = "No prompt yet.";
   eventLogEl.textContent = "No trace yet.";
   toolLogEl.textContent = "No tool calls yet.";
@@ -292,6 +434,7 @@ function startEventStream() {
 }
 
 refreshBtn.addEventListener("click", refreshRuns);
+newOutputBtn.addEventListener("click", scrollResponseToBottom);
 submitComposerBtn.addEventListener("click", () => submitComposer());
 newTaskBtn.addEventListener("click", () => submitComposer("new"));
 

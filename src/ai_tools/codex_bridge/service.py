@@ -31,6 +31,7 @@ class CodexBridgeService:
         self._active_run_id: str | None = None
         self._thread_to_run_id: dict[str, str] = {}
         self._tool_started_at: dict[str, Any] = {}
+        self._completed_agent_message_threads: set[str] = set()
         if hasattr(self.client, "set_notification_handler"):
             self.client.set_notification_handler(self.handle_notification)
         if hasattr(self.client, "set_server_request_handler"):
@@ -121,6 +122,7 @@ class CodexBridgeService:
         run.approval_needed = False
         run.pending_request_id = None
         run.response_text = ""
+        run.raw_response_text = ""
         run.append_transcript(kind="user", message=prompt)
         run.append_trace(kind="continued", label="Started follow-up turn")
         run.mark_status(RunStatus.RUNNING, summary="Continuing thread")
@@ -207,13 +209,22 @@ class CodexBridgeService:
         elif method == "item/agentMessage/delta":
             delta = str(params.get("delta", ""))
             if delta:
-                if not run.response_text:
+                thread_id = params.get("threadId") if isinstance(params, dict) else None
+                if isinstance(thread_id, str) and thread_id in self._completed_agent_message_threads:
+                    run.start_response_message()
+                    self._completed_agent_message_threads.discard(thread_id)
+                if not run.raw_response_text:
                     run.append_trace(kind="first_response", label="First response token")
                 run.append_response_delta(delta)
                 run.append_transcript(kind="assistant", message=delta, payload=params if isinstance(params, dict) else None)
         elif method == "item/started":
             item = params.get("item", {}) if isinstance(params, dict) else {}
             if isinstance(item, dict):
+                if item.get("type") == "agentMessage":
+                    thread_id = params.get("threadId") if isinstance(params, dict) else None
+                    if isinstance(thread_id, str):
+                        self._completed_agent_message_threads.discard(thread_id)
+                    run.start_response_message()
                 self._trace_item_started(run, item)
             run.append_transcript(kind="event", message=method, payload=params if isinstance(params, dict) else None)
         elif method == "item/completed":
@@ -224,8 +235,10 @@ class CodexBridgeService:
             if item_type == "agentMessage":
                 text = str(item.get("text", ""))
                 if text:
-                    if not run.response_text:
-                        run.response_text = text
+                    run.complete_response_message(text)
+                    thread_id = params.get("threadId") if isinstance(params, dict) else None
+                    if isinstance(thread_id, str):
+                        self._completed_agent_message_threads.add(thread_id)
                     blocked = text.startswith("[from codex :bot:] :warning: Blocked")
                     if blocked:
                         run.mark_status(RunStatus.FAILED, summary="Blocked")
@@ -253,7 +266,7 @@ class CodexBridgeService:
                 or "Run completed"
             )
             if status == "completed":
-                outcome = self._classify_completed_outcome(run.response_text)
+                outcome = self._classify_completed_outcome(run.response_text or run.raw_response_text)
                 if outcome == RunStatus.NOT_FOUND:
                     run.mark_status(RunStatus.NOT_FOUND, summary="No @codex message found")
                     run.append_trace(kind="not_found", label="No @codex message found")

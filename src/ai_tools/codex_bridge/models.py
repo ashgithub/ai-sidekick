@@ -61,6 +61,7 @@ class RunRecord(BaseModel):
     pending_request_id: str | None = None
     last_summary: str = ""
     response_text: str = ""
+    raw_response_text: str = ""
     transcript: list[TranscriptEntry] = Field(default_factory=list)
     trace: list[TraceEntry] = Field(default_factory=list)
 
@@ -78,7 +79,18 @@ class RunRecord(BaseModel):
         self.touch()
 
     def append_response_delta(self, delta: str) -> None:
+        self.raw_response_text += delta
         self.response_text += delta
+        self.touch()
+
+    def start_response_message(self) -> None:
+        self.response_text = ""
+        self.touch()
+
+    def complete_response_message(self, text: str) -> None:
+        self.response_text = text
+        if not self.raw_response_text:
+            self.raw_response_text = text
         self.touch()
 
     def append_trace(

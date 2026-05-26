@@ -18,6 +18,7 @@ def test_web_panel_is_compact_sidekick_not_dashboard() -> None:
     assert "run-list" not in html
     assert '<details class="debug-drawer">' in html
     assert "<summary>Prompt</summary>" in html
+    assert "<summary>Raw stream</summary>" in html
     assert "<summary>Trace</summary>" in html
     assert "Steer this run" in html
     assert "New task" in html
@@ -45,6 +46,9 @@ def test_web_panel_js_reads_current_run_and_maps_attention_states() -> None:
     assert 'fetchJson("/api/current-run")' in js
     assert "new EventSource" in js
     assert 'fetchJson("/api/invoke"' in js
+    assert "renderReadableText" in js
+    assert "raw_response_text" in js
+    assert "nearResponseBottom" in js
     assert "status-not_found" in js
     assert "status-stale_source" in js
     assert "No @codex message found" in js

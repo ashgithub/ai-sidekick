@@ -22,6 +22,7 @@
   --rds-focus: #161513;
   --rds-font-family-primary: "Oracle Sans", "Segoe UI", Arial, sans-serif;
   --rds-font-family-display: Georgia, "Times New Roman", serif;
+  --rds-font-family-mono: "SFMono-Regular", Menlo, monospace;
   --rds-font-size-heading-xs: 20px;
   --rds-font-size-subheading-xs: 16px;
   --rds-font-size-body-md: 16px;
@@ -199,9 +200,65 @@ label {
   color: var(--rds-text-primary);
   font-size: var(--rds-font-size-body-md);
   line-height: var(--rds-line-height-body-lg);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.response-text p,
+.response-text ul,
+.response-text ol,
+.response-text h3,
+.answer-code {
+  margin: 0 0 var(--rds-space-md);
+}
+
+.response-text p:last-child,
+.response-text ul:last-child,
+.response-text ol:last-child,
+.response-text h3:last-child,
+.answer-code:last-child {
+  margin-bottom: 0;
+}
+
+.response-text ul,
+.response-text ol {
+  padding-left: var(--rds-space-xl);
+}
+
+.response-text li + li {
+  margin-top: var(--rds-space-xs);
+}
+
+.response-text h3 {
+  font-size: var(--rds-font-size-subheading-xs);
+  font-weight: var(--rds-font-weight-bold);
+  line-height: var(--rds-line-height-body-md);
+}
+
+.response-text code {
+  border-radius: var(--rds-radius-md);
+  background: var(--rds-surface-neutral20);
+  padding: 0 var(--rds-space-xs);
+  font-family: var(--rds-font-family-mono);
+  font-size: var(--rds-font-size-body-sm);
+}
+
+.answer-code {
+  overflow-x: auto;
+  border: 1px solid var(--rds-border-divider);
+  border-radius: var(--rds-radius-md);
+  background: var(--rds-surface-neutral20);
+  padding: var(--rds-space-md);
+  white-space: pre;
+}
+
+.answer-code code {
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.answer-placeholder {
+  color: var(--rds-text-secondary);
 }
 
 .phase-list {
@@ -289,6 +346,12 @@ button.ghost-button {
   border: 1px solid var(--rds-border-enabled);
   background: var(--rds-surface-neutral10);
   color: var(--rds-text-primary);
+}
+
+.new-output-button {
+  margin-top: var(--rds-space-md);
+  background: var(--rds-surface-info-low);
+  color: var(--rds-info);
 }
 
 button:focus-visible,

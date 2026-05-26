@@ -144,6 +144,94 @@ def test_completed_notification_updates_summary_and_status() -> None:
     assert refreshed.trace[-1].kind == "completed"
 
 
+def test_agent_message_keeps_raw_stream_but_promotes_latest_completed_answer() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Do work",
+    )
+
+    service.handle_notification(
+        {
+            "method": "item/agentMessage/delta",
+            "params": {"threadId": "thread-1", "delta": "I am checking context."},
+        }
+    )
+    service.handle_notification(
+        {
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-1",
+                "item": {"type": "agentMessage", "text": "I am checking context."},
+            },
+        }
+    )
+    service.handle_notification(
+        {
+            "method": "item/started",
+            "params": {"threadId": "thread-1", "item": {"type": "agentMessage"}},
+        }
+    )
+    service.handle_notification(
+        {
+            "method": "item/agentMessage/delta",
+            "params": {"threadId": "thread-1", "delta": "Final answer:\n- First point\n- Second point"},
+        }
+    )
+    service.handle_notification(
+        {
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-1",
+                "item": {"type": "agentMessage", "text": "Final answer:\n- First point\n- Second point"},
+            },
+        }
+    )
+
+    refreshed = service.get_run(run.run_id)
+    assert refreshed is not None
+    assert refreshed.raw_response_text == "I am checking context.Final answer:\n- First point\n- Second point"
+    assert refreshed.response_text == "Final answer:\n- First point\n- Second point"
+    assert "I am checking context.Final answer" not in refreshed.response_text
+
+
+def test_next_agent_delta_after_completed_message_starts_a_new_readable_answer() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Do work",
+    )
+    service.handle_notification(
+        {
+            "method": "item/agentMessage/delta",
+            "params": {"threadId": "thread-1", "delta": "I am checking context."},
+        }
+    )
+    service.handle_notification(
+        {
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-1",
+                "item": {"type": "agentMessage", "text": "I am checking context."},
+            },
+        }
+    )
+
+    service.handle_notification(
+        {
+            "method": "item/agentMessage/delta",
+            "params": {"threadId": "thread-1", "delta": "Final answer"},
+        }
+    )
+
+    refreshed = service.get_run(run.run_id)
+    assert refreshed is not None
+    assert refreshed.raw_response_text == "I am checking context.Final answer"
+    assert refreshed.response_text == "Final answer"
+
+
 def test_blocked_agent_message_marks_run_failed() -> None:
     client = FakeClient()
     notifier = FakeNotifier()
@@ -304,6 +392,7 @@ def test_continue_current_thread_starts_new_turn_without_new_thread() -> None:
     assert continued.turn_id == "turn-2"
     assert continued.status is RunStatus.RUNNING
     assert continued.response_text == ""
+    assert continued.raw_response_text == ""
     assert continued.trace[-1].kind == "continued"
 
 

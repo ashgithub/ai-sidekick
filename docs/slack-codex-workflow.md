@@ -22,7 +22,7 @@ The hotkey posts minimal resolver metadata to the local resident Codex bridge. S
 
 Panel-open hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey only opens the local panel; it does not submit Slack work.
 
-The panel is intentionally a compact native sidekick, not a dashboard or browser tab. It shows the current invocation, current outcome, progress phases, response, steering/continue composer, and approvals. Prompt, tool call, and trace details are available only in collapsed debug sections.
+The panel is intentionally a compact native sidekick, not a dashboard or browser tab. It shows the current invocation, current outcome, progress phases, readable answer, steering/continue composer, and approvals. Prompt, raw stream, tool call, and trace details are available only in collapsed debug sections.
 
 ## Flow
 

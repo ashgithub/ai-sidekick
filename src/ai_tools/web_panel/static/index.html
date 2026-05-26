@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Tools Codex Sidekick</title>
-  <link rel="stylesheet" href="/static/assets/fonts/fonts.css?v=sidekick">
-  <link rel="stylesheet" href="/static/styles.css?v=sidekick">
+  <link rel="stylesheet" href="/static/assets/fonts/fonts.css?v=answer">
+  <link rel="stylesheet" href="/static/styles.css?v=answer">
 </head>
 <body>
   <main class="sidekick-shell" aria-label="Codex sidekick">
@@ -24,9 +24,10 @@
 
       <section class="response-card" aria-label="Current response">
         <div class="section-header">
-          <h2>Response</h2>
+          <h2>Answer</h2>
           <button id="refresh-btn" type="button" class="ghost-button">Refresh</button>
         </div>
+        <button id="new-output-btn" type="button" class="new-output-button" hidden>New output</button>
         <div id="response-view" class="response-text">No response yet.</div>
       </section>
 
@@ -55,6 +56,11 @@
         </details>
 
         <details class="debug-drawer">
+          <summary>Raw stream</summary>
+          <pre id="raw-stream-view" class="debug-text">No raw stream yet.</pre>
+        </details>
+
+        <details class="debug-drawer">
           <summary>Tool calls</summary>
           <pre id="tool-log" class="debug-text">No tool calls yet.</pre>
         </details>
@@ -66,6 +72,6 @@
       </div>
     </section>
   </main>
-  <script src="/static/app.js?v=sidekick"></script>
+  <script src="/static/app.js?v=answer"></script>
 </body>
 </html>

@@ -33,7 +33,7 @@ The bridge exposes `GET /healthz` for process liveness and `GET /readyz` for sho
 
 `start_web_panel_daemon.sh` starts the bridge and a hidden native pywebview sidekick. Run `./scripts/open_web_panel.sh` or press `F5` to show/focus that sidekick. Use `./scripts/start_web_panel_daemon.sh --bridge-only` only when you explicitly want HTTP ingress without a native window.
 
-The sidekick shows only the current invocation by default: outcome banner, progress phases, response, steering/continue composer, and approval actions. Prompt, tool calls, and trace are collapsed into debug sections. Slack source lookup outcomes are explicit: `not_found` and `stale_source` no longer appear as generic successful completions.
+The sidekick shows only the current invocation by default: outcome banner, progress phases, readable answer, steering/continue composer, and approval actions. Prompt, raw stream, tool calls, and trace are collapsed into debug sections. Slack source lookup outcomes are explicit: `not_found` and `stale_source` no longer appear as generic successful completions.
 
 If port `8765` is already occupied, the launcher prints a diagnostic instead of a Python traceback. To replace the existing listener and stay on the configured port, run `./scripts/start_web_panel_daemon.sh --restart`.
 
