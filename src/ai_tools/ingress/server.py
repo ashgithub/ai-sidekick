@@ -6,8 +6,10 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
+
+from ai_tools.codex_bridge.models import SourceMetadata
 
 from .manual import manual_source_metadata
 from .slack import SlackIngressPayload, build_slack_worker_prompt
@@ -72,6 +74,8 @@ class LocalIngressServer:
                         content_type = "application/javascript; charset=utf-8"
                     elif name.endswith(".css"):
                         content_type = "text/css; charset=utf-8"
+                    elif name.endswith(".ttf"):
+                        content_type = "font/ttf"
                     self._serve_static(name, content_type=content_type)
                     return
                 if parsed.path == "/healthz":
@@ -89,6 +93,9 @@ class LocalIngressServer:
                 if parsed.path == "/api/current-run":
                     run = outer.service.current_run()
                     self._write_json(HTTPStatus.OK, {"run": run.model_dump(mode="json") if run else None})
+                    return
+                if parsed.path == "/api/events":
+                    self._write_event_stream()
                     return
                 if parsed.path.startswith("/api/runs/"):
                     run_id = parsed.path.removeprefix("/api/runs/")
@@ -131,11 +138,45 @@ class LocalIngressServer:
                     return
                 if parsed.path in {"/runs/manual", "/api/runs/manual"}:
                     prompt = str(body.get("prompt", "")).strip()
-                    run = outer.service.submit_run(
+                    run = outer.service.submit_or_route(
                         source=manual_source_metadata(),
                         prompt=prompt,
+                        intent=str(body.get("intent", "new")),
                     )
                     self._write_json(HTTPStatus.OK, {"run_id": run.run_id, "status": "accepted"})
+                    return
+                if parsed.path == "/api/invoke":
+                    try:
+                        source = SourceMetadata(
+                            source_kind=str(body.get("source_kind", "manual")).strip() or "manual",
+                            source_label=str(body.get("source_label", "Manual")).strip() or "Manual",
+                            source_id=str(body.get("source_id", "manual")).strip() or "manual",
+                        )
+                        run = outer.service.submit_or_route(
+                            source=source,
+                            prompt=str(body.get("prompt", "")).strip(),
+                            intent=str(body.get("intent", "new")).strip() or "new",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        self._write_json(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            {
+                                "error": "submit_failed",
+                                "message": str(exc),
+                                "detail": type(exc).__name__,
+                            },
+                        )
+                        return
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {"run_id": run.run_id, "status": "accepted", "panel_visibility": outer.panel_visibility},
+                    )
+                    return
+                if parsed.path == "/api/panel/show":
+                    self._write_json(HTTPStatus.OK, outer.service.show_panel())
+                    return
+                if parsed.path == "/api/panel/toggle":
+                    self._write_json(HTTPStatus.OK, outer.service.toggle_panel())
                     return
                 if parsed.path.startswith("/runs/") and parsed.path.endswith("/approve"):
                     run_id = parsed.path.split("/")[2]
@@ -175,6 +216,28 @@ class LocalIngressServer:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _write_event_stream(self) -> None:
+                import time
+
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
+
+                last_payload = ""
+                for _ in range(7200):
+                    run = outer.service.current_run()
+                    payload = json.dumps({"run": run.model_dump(mode="json") if run else None})
+                    if payload != last_payload:
+                        try:
+                            self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
+                        last_payload = payload
+                    time.sleep(0.5)
+
             def _serve_static(self, name: str, *, content_type: str) -> None:
                 if outer.static_dir is None:
                     self._write_json(HTTPStatus.NOT_FOUND, {"error": "static assets unavailable"})
@@ -186,6 +249,7 @@ class LocalIngressServer:
                 body = path.read_bytes()
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "no-store, max-age=0")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)

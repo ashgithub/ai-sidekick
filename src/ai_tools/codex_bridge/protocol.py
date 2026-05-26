@@ -147,6 +147,9 @@ class CodexAppServerClient:
     def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._request("turn/start", params)
 
+    def turn_steer(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._request("turn/steer", params)
+
     def reply_to_server_request(self, request_id: str, payload: object) -> None:
         self._write_line(self.protocol.build_response(request_id, payload if isinstance(payload, dict) else {}))
 

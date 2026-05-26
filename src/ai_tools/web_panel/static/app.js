@@ -2,12 +2,20 @@ const runSummaryEl = document.getElementById("run-summary");
 const promptViewEl = document.getElementById("prompt-view");
 const responseViewEl = document.getElementById("response-view");
 const eventLogEl = document.getElementById("event-log");
+const toolLogEl = document.getElementById("tool-log");
 const approvalBoxEl = document.getElementById("approval-box");
 const activeStatusEl = document.getElementById("active-status");
-const manualPromptEl = document.getElementById("manual-prompt");
+const sourceLineEl = document.getElementById("source-line");
+const composerLabelEl = document.getElementById("composer-label");
+const composerInputEl = document.getElementById("composer-input");
 const refreshBtn = document.getElementById("refresh-btn");
-const submitManualBtn = document.getElementById("submit-manual-btn");
+const submitComposerBtn = document.getElementById("submit-composer-btn");
+const newTaskBtn = document.getElementById("new-task-btn");
 const phaseListEl = document.getElementById("phase-list");
+
+let currentRun = null;
+let composerIntent = "new";
+let fallbackPoll = null;
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -58,6 +66,30 @@ function summaryTitle(run) {
   return run.last_summary || statusLabel(run.status);
 }
 
+function setComposerForRun(run) {
+  if (!run) {
+    composerIntent = "new";
+    composerLabelEl.textContent = "Start new task";
+    submitComposerBtn.textContent = "Start";
+    return;
+  }
+  if (["queued", "starting", "running"].includes(run.status)) {
+    composerIntent = "steer";
+    composerLabelEl.textContent = "Steer this run";
+    submitComposerBtn.textContent = "Steer";
+    return;
+  }
+  if (run.thread_id) {
+    composerIntent = "continue";
+    composerLabelEl.textContent = "Continue this thread";
+    submitComposerBtn.textContent = "Continue";
+    return;
+  }
+  composerIntent = "new";
+  composerLabelEl.textContent = "Start new task";
+  submitComposerBtn.textContent = "Start";
+}
+
 function renderSummary(run) {
   runSummaryEl.innerHTML = "";
 
@@ -80,6 +112,8 @@ function traceLabel(entry) {
     codex_started: "Codex ready",
     thread_started: "Thread ready",
     turn_started: "Working",
+    steered: "Steered",
+    continued: "Follow-up started",
     first_response: "Response started",
     tool_started: `Tool started${tool}`,
     tool_completed: `Tool completed${tool}${duration}`,
@@ -104,7 +138,7 @@ function renderPhaseList(run) {
     return;
   }
 
-  visible.slice(-7).forEach((entry, index, entries) => {
+  visible.slice(-6).forEach((entry, index, entries) => {
     const item = document.createElement("li");
     if (index === entries.length - 1 && !["completed", "failed", "not_found", "stale_source"].includes(entry.kind)) {
       item.className = "current";
@@ -126,6 +160,16 @@ function renderTrace(run) {
     const status = entry.status ? ` ${entry.status}` : "";
     return `[${entry.kind}]${tool}${status}${duration} ${entry.label}`;
   }).join("\n");
+}
+
+function renderTools(run) {
+  const trace = Array.isArray(run.trace) ? run.trace : [];
+  const tools = trace.filter((entry) => entry.kind === "tool_started" || entry.kind === "tool_completed");
+  if (!tools.length) {
+    toolLogEl.textContent = "No tool calls yet.";
+    return;
+  }
+  toolLogEl.textContent = tools.map((entry) => traceLabel(entry)).join("\n");
 }
 
 function renderApproval(run) {
@@ -156,6 +200,8 @@ function renderApproval(run) {
 }
 
 function renderRun(run) {
+  currentRun = run;
+  sourceLineEl.textContent = `${run.source.source_label} - ${run.thread_id || "Starting"}`;
   activeStatusEl.textContent = statusLabel(run.status);
   activeStatusEl.className = `status-pill ${statusClass(run.status)}`;
   renderSummary(run);
@@ -163,22 +209,27 @@ function renderRun(run) {
   responseViewEl.textContent = run.response_text || "No response yet.";
   promptViewEl.textContent = run.prompt || "No prompt yet.";
   renderTrace(run);
+  renderTools(run);
   renderApproval(run);
+  setComposerForRun(run);
 }
 
 function renderIdle() {
+  currentRun = null;
+  sourceLineEl.textContent = "Waiting for a shortcut";
   activeStatusEl.textContent = "Idle";
   activeStatusEl.className = "status-pill status-idle";
-  runSummaryEl.textContent = "Waiting for a shortcut or manual prompt.";
+  runSummaryEl.textContent = "Waiting for a shortcut or task.";
   phaseListEl.innerHTML = "<li>No active invocation yet.</li>";
   responseViewEl.textContent = "No response yet.";
   promptViewEl.textContent = "No prompt yet.";
   eventLogEl.textContent = "No trace yet.";
+  toolLogEl.textContent = "No tool calls yet.";
   approvalBoxEl.textContent = "No approval needed.";
+  setComposerForRun(null);
 }
 
-async function refreshRuns() {
-  const payload = await fetchJson("/api/current-run");
+function renderPayload(payload) {
   if (payload.run) {
     renderRun(payload.run);
   } else {
@@ -186,17 +237,28 @@ async function refreshRuns() {
   }
 }
 
-async function submitManual() {
-  const prompt = manualPromptEl.value.trim();
+async function refreshRuns() {
+  const payload = await fetchJson("/api/current-run");
+  renderPayload(payload);
+}
+
+async function submitComposer(intentOverride) {
+  const prompt = composerInputEl.value.trim();
   if (!prompt) {
     return;
   }
-  await fetchJson("/api/runs/manual", {
+  await fetchJson("/api/invoke", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({
+      source_kind: "manual",
+      source_label: "Sidekick",
+      source_id: `sidekick-${Date.now()}`,
+      prompt,
+      intent: intentOverride || composerIntent,
+    }),
   });
-  manualPromptEl.value = "";
+  composerInputEl.value = "";
   await refreshRuns();
 }
 
@@ -210,14 +272,36 @@ async function denyRun(runId) {
   await refreshRuns();
 }
 
+function startEventStream() {
+  if (!window.EventSource) {
+    return false;
+  }
+  const events = new EventSource("/api/events");
+  events.onmessage = (event) => {
+    renderPayload(JSON.parse(event.data));
+  };
+  events.onerror = () => {
+    events.close();
+    if (!fallbackPoll) {
+      fallbackPoll = setInterval(() => {
+        refreshRuns().catch((error) => console.error(error));
+      }, 3000);
+    }
+  };
+  return true;
+}
+
 refreshBtn.addEventListener("click", refreshRuns);
-submitManualBtn.addEventListener("click", submitManual);
+submitComposerBtn.addEventListener("click", () => submitComposer());
+newTaskBtn.addEventListener("click", () => submitComposer("new"));
 
 refreshRuns().catch((error) => {
   console.error(error);
   runSummaryEl.textContent = "Failed to load panel state.";
 });
 
-setInterval(() => {
-  refreshRuns().catch((error) => console.error(error));
-}, 2000);
+if (!startEventStream()) {
+  fallbackPoll = setInterval(() => {
+    refreshRuns().catch((error) => console.error(error));
+  }, 3000);
+}

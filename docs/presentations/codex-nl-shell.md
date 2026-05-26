@@ -26,13 +26,13 @@ sequenceDiagram
     participant You
     participant Ghostty
     participant zsh
-    participant Codex
+    participant Sidekick
 
     You->>Ghostty: type an English shell request
     You->>Ghostty: press ctrl+option+command+/
     Ghostty->>zsh: private escape sequence
-    zsh->>Codex: codex exec conversion prompt
-    Codex-->>zsh: one safe zsh command
+    zsh->>Sidekick: scripts/codex_nl_shell_sidekick.sh
+    Sidekick-->>zsh: one safe zsh command
     zsh-->>You: command appears in BUFFER
     You->>zsh: review, edit, or press Enter
 ```
@@ -112,16 +112,15 @@ Plain-English version:
 
 ```text
 1. Save whatever is currently typed at the prompt.
-2. Use CODEX_NL_MODEL if set, otherwise use gpt-5.4-mini.
-3. Treat the current prompt text as the English request.
-4. Trim extra spaces from the beginning and end.
-5. Optionally remove a leading "# " if you typed the request as a shell comment.
-6. If nothing is left, show a message and stop.
+2. Treat the current prompt text as the English request.
+3. Trim extra spaces from the beginning and end.
+4. Optionally remove a leading "# " if you typed the request as a shell comment.
+5. If nothing is left, show a message and stop.
+6. Submit the request to the resident sidekick helper.
 ```
 
 ```zsh
 original_buffer="$BUFFER"
-codex_model="${CODEX_NL_MODEL:-gpt-5.4-mini}"
 query="$BUFFER"
 query="${query#"${query%%[![:space:]]*}"}"
 query="${query%"${query##*[![:space:]]}"}"
@@ -137,29 +136,23 @@ The `# ` step is optional convenience, not core logic. It lets you type `# find 
 
 <!-- end_slide -->
 
-Step 5: Codex Generates One Command
-===================================
+Step 5: The Sidekick Generates One Command
+==========================================
 
 File: `~/.zsh/widgets/codex-nl-shell.zsh`
 
 ```zsh
-codex exec \
-  --ephemeral \
-  --sandbox read-only \
-  --skip-git-repo-check \
-  -m "$codex_model" \
-  --cd "$PWD" \
-  -o "$tmp" \
-  "Convert this natural language request into one safe zsh command for macOS/Linux. Return only the command, with no Markdown, no explanation, and no execution. Prefer rg, fd, bat, zoxide, and safe read-only commands when they fit. Request: $query" \
-  >/dev/null 2>"$err"
+local helper="$HOME/work/code/python/ai_tools/scripts/codex_nl_shell_sidekick.sh"
+
+"$helper" "$query" >"$tmp" 2>"$err"
 ```
 
 Important guardrails:
 
 ```text
-ephemeral session
-read-only sandbox
-current directory context
+resident Codex sidekick
+configured model and sandbox policy
+current directory context is included in the prompt
 command only, no explanation
 ```
 

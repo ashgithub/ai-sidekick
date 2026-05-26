@@ -1,6 +1,6 @@
 # AI Text Tools
 
-The AI Text Tools app is a universal Tk GUI and CLI wrapper around the local Deep Agent runtime.
+The AI Text Tools shortcut and CLI now submit to the resident Codex sidekick by default. The legacy Tk GUI remains available as an explicit fallback.
 
 ## Workflow
 
@@ -26,11 +26,19 @@ The AI Text Tools app is a universal Tk GUI and CLI wrapper around the local Dee
 ./scripts/run_app.sh --nudge commands --text "list large files in current directory"
 ```
 
-Legacy flags remain accepted for compatibility:
+These commands post to `http://127.0.0.1:8765/api/invoke` and show the sidekick. Start the sidekick first:
 
 ```bash
-./scripts/run_app.sh --tab Proofread --app slack --text "quick draft message"
+./scripts/start_web_panel_daemon.sh --restart
 ```
+
+Use the legacy Tk GUI explicitly when you need the old editable local output flow:
+
+```bash
+./scripts/run_app.sh --tk --tab Proofread --app slack --text "quick draft message"
+```
+
+Legacy flags such as `--tab`, `--app`, `--nudge`, and `--text` remain accepted for sidekick submission.
 
 ## Refresh Models
 

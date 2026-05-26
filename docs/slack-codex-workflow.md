@@ -22,7 +22,7 @@ The hotkey posts minimal resolver metadata to the local resident Codex bridge. S
 
 Panel-open hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey only opens the local panel; it does not submit Slack work.
 
-The panel is intentionally a compact sidekick, not a dashboard. It shows the current invocation, current outcome, progress phases, response, and approvals. Prompt and trace details are available only in collapsed debug sections.
+The panel is intentionally a compact native sidekick, not a dashboard or browser tab. It shows the current invocation, current outcome, progress phases, response, steering/continue composer, and approvals. Prompt, tool call, and trace details are available only in collapsed debug sections.
 
 ## Flow
 
@@ -54,7 +54,7 @@ The bridge keeps only the current invocation in memory. It does not persist run 
 
 Slack resolver stop conditions are surfaced as explicit run states. If no `@codex` message is found, the run becomes `not_found`. If the latest message is older than `slack.latest_message_max_age_minutes`, the run becomes `stale_source`.
 
-`scripts/start_web_panel_daemon.sh` is bridge-only, but it still serves the web panel at `http://127.0.0.1:8765/`. Use `scripts/open_web_panel.sh` to inspect the current invocation in your browser. Use `scripts/run_web_panel.sh` only when you specifically want the pywebview shell. Both commands bind the same configured port, so run one bridge at a time.
+`scripts/start_web_panel_daemon.sh` starts the bridge and a hidden pywebview sidekick. Use `scripts/open_web_panel.sh` or the configured `F5` Hammerspoon hotkey to show/focus the current invocation. Use `scripts/start_web_panel_daemon.sh --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
 
 If port `8765` is occupied by an older or unrelated process, `scripts/start_web_panel_daemon.sh` prints a port diagnostic and exits. Restart on the same default port with:
 
@@ -96,11 +96,11 @@ For visible UI testing while the daemon is running:
 ./scripts/open_web_panel.sh
 ```
 
-Press the configured panel-open function key, `F5` by default, to open the same panel on demand. The web panel can submit a manual test run through its prompt field. If you want the pywebview shell instead of the browser, stop the bridge-only script and run `./scripts/run_web_panel.sh`.
+Press the configured panel-open function key, `F5` by default, to show the same native sidekick on demand. The composer steers an active run, continues a completed thread, or starts a new task when you choose `New task`.
 
 To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Codex bridge is not running` and a `Start: .../scripts/start_web_panel_daemon.sh --restart` hint; it should not open Codex.app.
 
-Current scope: this POC supports Slack hotkey ingress and manual web-panel test runs. The Tk `ai_tools` client and zsh widget are not wired to the resident bridge yet.
+Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, `ai_tools` text submissions through `/api/invoke`, and a zsh command-generation helper at `scripts/codex_nl_shell_sidekick.sh`.
 
 ## Status Messages
 

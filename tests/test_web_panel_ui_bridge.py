@@ -8,6 +8,7 @@ class StubService:
         self.run = RunRecord.create(source=source, prompt="hello")
         self.run.status = RunStatus.RUNNING
         self.run.last_summary = "Working"
+        self.submissions: list[tuple[str, str]] = []
 
     def list_runs(self):
         return [self.run]
@@ -17,6 +18,10 @@ class StubService:
 
     def get_run(self, run_id: str):
         return self.run if run_id == self.run.run_id else None
+
+    def submit_or_route(self, *, source, prompt: str, intent: str = "new"):
+        self.submissions.append((prompt, intent))
+        return self.run
 
 
 def test_ui_bridge_returns_snapshot_for_panel_rendering() -> None:
@@ -30,3 +35,13 @@ def test_ui_bridge_returns_snapshot_for_panel_rendering() -> None:
     assert snapshot["runs"][0]["response_text"] == ""
     assert snapshot["runs"][0]["trace_entries"] == []
     assert snapshot["current_run"]["run_id"] == snapshot["runs"][0]["run_id"]
+
+
+def test_ui_bridge_submits_to_current_thread_with_intent() -> None:
+    service = StubService()
+    bridge = PanelUiBridge(service=service)
+
+    payload = bridge.submit_prompt("keep going", intent="steer")
+
+    assert payload["run_id"] == service.run.run_id
+    assert service.submissions == [("keep going", "steer")]

@@ -7,12 +7,17 @@ cd "${ROOT_DIR}"
 source "${SCRIPT_DIR}/common_env.sh"
 
 RESTART=0
+BRIDGE_ONLY=0
 CONFIG_PATH="${AI_TOOLS_WEB_PANEL_CONFIG:-config/codex_web_panel.yaml}"
 PANEL_VISIBILITY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --restart)
       RESTART=1
+      shift
+      ;;
+    --bridge-only|--no-ui)
+      BRIDGE_ONLY=1
       shift
       ;;
     --config)
@@ -34,15 +39,17 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--config PATH] [--panel-visibility always|attention|manual]"
+      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--bridge-only] [--config PATH] [--panel-visibility always|attention|manual]"
       echo
-      echo "Starts the local Codex bridge using config/codex_web_panel.yaml by default."
+      echo "Starts the local Codex sidekick using config/codex_web_panel.yaml by default."
+      echo "The default process creates a hidden pywebview sidekick that F5 can show."
+      echo "--bridge-only starts HTTP ingress without a native sidekick window."
       echo "--restart kills the current listener on that port before starting."
       exit 0
       ;;
     *)
       echo "Unknown argument: $1" >&2
-      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--config PATH] [--panel-visibility always|attention|manual]" >&2
+      echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--bridge-only] [--config PATH] [--panel-visibility always|attention|manual]" >&2
       exit 2
       ;;
   esac
@@ -115,4 +122,9 @@ if [[ -n "${PANEL_VISIBILITY}" ]]; then
   export AI_TOOLS_PANEL_VISIBILITY_OVERRIDE="${PANEL_VISIBILITY}"
 fi
 
-exec ${AI_TOOLS_PYTHON_BIN} -m ai_tools.web_panel.app --no-ui --config "${CONFIG_PATH}"
+ARGS=(-m ai_tools.web_panel.app --config "${CONFIG_PATH}")
+if [[ "${BRIDGE_ONLY}" == "1" ]]; then
+  ARGS+=(--no-ui)
+fi
+
+exec ${AI_TOOLS_PYTHON_BIN} "${ARGS[@]}"

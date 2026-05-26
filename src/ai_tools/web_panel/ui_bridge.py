@@ -15,9 +15,16 @@ class PanelUiBridge:
         return {"runs": runs, "current_run": self._serialize_run(current) if current else None}
 
     def submit_manual(self, prompt: str) -> dict[str, Any]:
+        return self.submit_prompt(prompt, intent="new")
+
+    def submit_prompt(self, prompt: str, *, intent: str = "new") -> dict[str, Any]:
         from ai_tools.ingress.manual import manual_source_metadata
 
-        run = self.service.submit_run(source=manual_source_metadata("manual-ui"), prompt=prompt)
+        run = self.service.submit_or_route(
+            source=manual_source_metadata("manual-ui"),
+            prompt=prompt,
+            intent=intent,
+        )
         return run.model_dump(mode="json")
 
     def approve_run(self, run_id: str) -> dict[str, Any]:

@@ -1,13 +1,13 @@
 :root {
   --rds-page-background-neutral30: #F1EFED;
+  --rds-surface-neutral0: #FFFFFF;
   --rds-surface-neutral10: #FBF9F8;
   --rds-surface-neutral20: #F5F4F2;
   --rds-surface-neutral30: #F1EFED;
-  --rds-surface-selected: #E4F1F7;
-  --rds-surface-success-low: #F4FCEB;
   --rds-surface-info-low: #F6FAFC;
   --rds-surface-warning-low: #FEF9F2;
   --rds-surface-danger-low: #FFF8F7;
+  --rds-surface-success-low: #F4FCEB;
   --rds-text-primary: #161513;
   --rds-text-secondary: #161513B2;
   --rds-text-inverse: #FFFFFF;
@@ -20,7 +20,8 @@
   --rds-button-cta-surface: #312D2A;
   --rds-button-danger-surface: #B3311F;
   --rds-focus: #161513;
-  --rds-font-family-primary: "Oracle Sans";
+  --rds-font-family-primary: "Oracle Sans", "Segoe UI", Arial, sans-serif;
+  --rds-font-family-display: Georgia, "Times New Roman", serif;
   --rds-font-size-heading-xs: 20px;
   --rds-font-size-subheading-xs: 16px;
   --rds-font-size-body-md: 16px;
@@ -30,6 +31,7 @@
   --rds-font-weight-semibold: 600;
   --rds-font-weight-bold: 700;
   --rds-line-height-heading-xs: 28px;
+  --rds-line-height-body-lg: 24px;
   --rds-line-height-body-md: 20px;
   --rds-line-height-body-sm: 16px;
   --rds-space-xs: 4px;
@@ -53,7 +55,9 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--rds-text-primary);
-  background: var(--rds-page-background-neutral30);
+  background:
+    radial-gradient(circle at top right, var(--rds-surface-neutral0) 0, transparent 220px),
+    var(--rds-page-background-neutral30);
   font-family: var(--rds-font-family-primary);
   font-size: var(--rds-font-size-body-md);
   font-weight: var(--rds-font-weight-regular);
@@ -62,24 +66,28 @@ body {
 
 .sidekick-shell {
   display: grid;
-  grid-template-columns: minmax(320px, 560px);
-  justify-content: center;
-  padding: var(--rds-space-2xl);
+  justify-content: end;
+  min-height: 100vh;
+  padding: var(--rds-space-lg);
 }
 
-.sidekick-card {
+.sidekick-panel {
   display: grid;
-  gap: var(--rds-space-lg);
+  align-self: start;
+  gap: var(--rds-space-md);
+  width: min(calc(100vw - 32px), 520px);
+  max-width: 520px;
   background: var(--rds-surface-neutral10);
   border: 1px solid var(--rds-border-divider);
   border-radius: var(--rds-radius-xl);
   box-shadow: var(--rds-shadow-sm);
-  padding: var(--rds-space-xl);
+  padding: var(--rds-space-lg);
 }
 
 .sidekick-header,
 .section-header,
-.approval-actions {
+.approval-actions,
+.composer-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -95,7 +103,8 @@ body {
 }
 
 h1,
-h2 {
+h2,
+label {
   margin: 0;
   font-family: var(--rds-font-family-primary);
 }
@@ -106,7 +115,8 @@ h1 {
   line-height: var(--rds-line-height-heading-xs);
 }
 
-h2 {
+h2,
+label {
   font-size: var(--rds-font-size-subheading-xs);
   font-weight: var(--rds-font-weight-bold);
   line-height: var(--rds-line-height-body-md);
@@ -121,11 +131,11 @@ h2 {
   font-size: var(--rds-font-size-body-xs);
   font-weight: var(--rds-font-weight-bold);
   line-height: var(--rds-line-height-body-sm);
-  text-transform: capitalize;
 }
 
 .status-running,
-.status-starting {
+.status-starting,
+.status-queued {
   color: var(--rds-info);
   background: var(--rds-surface-info-low);
 }
@@ -148,18 +158,20 @@ h2 {
 }
 
 .summary-card,
-.section-card,
-.approval-box,
-.debug-panel {
+.response-card,
+.progress-card,
+.approval-card,
+.composer-card,
+.debug-drawer {
   background: var(--rds-surface-neutral20);
   border: 1px solid var(--rds-border-divider);
   border-radius: var(--rds-radius-lg);
-  padding: var(--rds-space-lg);
+  padding: var(--rds-space-md);
 }
 
 .summary-card {
   display: grid;
-  gap: var(--rds-space-sm);
+  gap: var(--rds-space-xs);
   font-size: var(--rds-font-size-body-sm);
   line-height: var(--rds-line-height-body-sm);
 }
@@ -172,6 +184,24 @@ h2 {
 
 .summary-meta {
   color: var(--rds-text-secondary);
+}
+
+.response-card {
+  background: var(--rds-surface-neutral0);
+}
+
+.response-text {
+  width: 100%;
+  max-height: 44vh;
+  margin-top: var(--rds-space-md);
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--rds-text-primary);
+  font-size: var(--rds-font-size-body-md);
+  line-height: var(--rds-line-height-body-lg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .phase-list {
@@ -189,28 +219,22 @@ h2 {
   font-weight: var(--rds-font-weight-semibold);
 }
 
-.response-card {
+.composer-card {
+  display: grid;
+  gap: var(--rds-space-md);
   background: var(--rds-surface-neutral10);
 }
 
-.response-text,
-.debug-text,
-textarea {
-  width: 100%;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+.composer-actions {
+  justify-content: flex-end;
 }
 
-.response-text {
-  margin-top: var(--rds-space-md);
-  min-height: var(--rds-space-4xl);
-  color: var(--rds-text-primary);
-  font-size: var(--rds-font-size-body-md);
-  line-height: var(--rds-line-height-body-md);
+.debug-stack {
+  display: grid;
+  gap: var(--rds-space-sm);
 }
 
-.debug-panel summary {
+.debug-drawer summary {
   cursor: pointer;
   color: var(--rds-text-primary);
   font-size: var(--rds-font-size-body-sm);
@@ -220,15 +244,24 @@ textarea {
 
 .debug-text,
 textarea {
+  width: 100%;
   margin: var(--rds-space-md) 0 0;
   border: 1px solid var(--rds-border-enabled);
   border-radius: var(--rds-radius-md);
-  background: var(--rds-surface-neutral10);
+  background: var(--rds-surface-neutral0);
   color: var(--rds-text-primary);
   padding: var(--rds-space-md);
   font-family: var(--rds-font-family-primary);
   font-size: var(--rds-font-size-body-sm);
-  line-height: var(--rds-line-height-body-sm);
+  line-height: var(--rds-line-height-body-lg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.debug-text {
+  max-height: 180px;
+  overflow: auto;
 }
 
 textarea {
@@ -267,10 +300,12 @@ textarea:focus-visible {
 
 @media (max-width: 599px) {
   .sidekick-shell {
-    padding: var(--rds-space-lg);
+    justify-content: center;
+    padding: var(--rds-space-sm);
   }
 
-  .sidekick-card {
-    padding: var(--rds-space-lg);
+  .sidekick-panel {
+    width: calc(100vw - 16px);
+    padding: var(--rds-space-md);
   }
 }

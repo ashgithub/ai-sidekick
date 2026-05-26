@@ -8,6 +8,7 @@ class FakeClient:
         self.initialized = False
         self.thread_start_calls: list[dict] = []
         self.turn_start_calls: list[dict] = []
+        self.turn_steer_calls: list[dict] = []
         self.approval_calls: list[tuple[str, object]] = []
         self.command_available = True
 
@@ -20,7 +21,11 @@ class FakeClient:
 
     def turn_start(self, params: dict) -> dict:
         self.turn_start_calls.append(params)
-        return {"turnId": "turn-1"}
+        return {"turnId": f"turn-{len(self.turn_start_calls)}"}
+
+    def turn_steer(self, params: dict) -> dict:
+        self.turn_steer_calls.append(params)
+        return {"turnId": params.get("turnId", "turn-1")}
 
     def reply_to_server_request(self, request_id: str, payload: object) -> None:
         self.approval_calls.append((request_id, payload))
@@ -247,6 +252,78 @@ def test_new_submit_replaces_previous_active_run() -> None:
     assert service.get_run(first.run_id) is None
     assert service.get_run(second.run_id) is not None
     assert [run.run_id for run in service.list_runs()] == [second.run_id]
+
+
+def test_steer_current_run_appends_to_active_turn_without_new_thread() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Initial prompt",
+    )
+
+    steered = service.steer_current_run("Focus on the latest error")
+
+    assert steered.run_id == run.run_id
+    assert client.thread_start_calls == [{"cwd": str(service.cwd), "approvalPolicy": "on-request", "approvalsReviewer": "auto_review", "personality": "pragmatic"}]
+    assert client.turn_start_calls == [
+        {"threadId": "thread-1", "input": [{"type": "text", "text": "Initial prompt"}], "cwd": str(service.cwd)}
+    ]
+    assert client.turn_steer_calls == [
+        {"threadId": "thread-1", "turnId": "turn-1", "input": [{"type": "text", "text": "Focus on the latest error"}]}
+    ]
+    assert steered.status is RunStatus.RUNNING
+    assert steered.trace[-1].kind == "steered"
+    assert steered.transcript[-1].kind == "user"
+    assert steered.transcript[-1].message == "Focus on the latest error"
+
+
+def test_continue_current_thread_starts_new_turn_without_new_thread() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Initial prompt",
+    )
+    service.handle_notification(
+        {
+            "method": "turn/completed",
+            "params": {"threadId": "thread-1", "status": "completed", "lastAgentMessage": "Done"},
+        }
+    )
+
+    continued = service.continue_current_thread("Now write tests")
+
+    assert continued.run_id == run.run_id
+    assert len(client.thread_start_calls) == 1
+    assert client.turn_start_calls[-1] == {
+        "threadId": "thread-1",
+        "input": [{"type": "text", "text": "Now write tests"}],
+        "cwd": str(service.cwd),
+    }
+    assert continued.turn_id == "turn-2"
+    assert continued.status is RunStatus.RUNNING
+    assert continued.response_text == ""
+    assert continued.trace[-1].kind == "continued"
+
+
+def test_submit_to_current_thread_routes_by_intent() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+
+    first = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        prompt="Initial task",
+        intent="new",
+    )
+    steered = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        prompt="Steer while running",
+        intent="steer",
+    )
+
+    assert first.run_id == steered.run_id
+    assert client.turn_steer_calls
 
 
 def test_tool_call_notifications_add_trace_entries() -> None:

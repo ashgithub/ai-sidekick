@@ -20,12 +20,14 @@ class CodexBridgeService:
         store: ActiveRunStateStore | None = None,
         cwd: Path | None = None,
         thread_options: dict[str, Any] | None = None,
+        panel_controller: object | None = None,
     ) -> None:
         self.client = client
         self.notifier = notifier or NullNotifier()
         self.store = store or ActiveRunStateStore()
         self.cwd = cwd or Path.cwd()
         self.thread_options = thread_options or {}
+        self.panel_controller = panel_controller
         self._active_run_id: str | None = None
         self._thread_to_run_id: dict[str, str] = {}
         self._tool_started_at: dict[str, Any] = {}
@@ -70,6 +72,71 @@ class CodexBridgeService:
         self.store.upsert(run)
         self.notifier.run_started("Run started", "A Codex task is now running.")
         return run
+
+    def submit_or_route(self, *, source: SourceMetadata, prompt: str, intent: str = "new") -> RunRecord:
+        normalized = (intent or "new").strip().lower()
+        if normalized == "new":
+            return self.submit_run(source=source, prompt=prompt)
+        if normalized == "steer":
+            return self.steer_current_run(prompt)
+        if normalized == "continue":
+            return self.continue_current_thread(prompt)
+        if normalized == "auto":
+            current = self.current_run()
+            if current is None or not current.thread_id:
+                return self.submit_run(source=source, prompt=prompt)
+            if current.status in {RunStatus.QUEUED, RunStatus.STARTING, RunStatus.RUNNING, RunStatus.APPROVAL_NEEDED}:
+                return self.steer_current_run(prompt)
+            return self.continue_current_thread(prompt)
+        raise ValueError(f"Unknown invocation intent: {intent}")
+
+    def steer_current_run(self, prompt: str) -> RunRecord:
+        run = self._require_current_thread()
+        if not run.turn_id:
+            raise ValueError(f"Run {run.run_id} has no active turn to steer")
+        self.client.turn_steer(
+            {
+                "threadId": run.thread_id,
+                "turnId": run.turn_id,
+                "input": [{"type": "text", "text": prompt}],
+            }
+        )
+        run.append_transcript(kind="user", message=prompt)
+        run.append_trace(kind="steered", label="Steered active turn")
+        run.mark_status(RunStatus.RUNNING, summary="Steering run")
+        self.store.upsert(run)
+        return run
+
+    def continue_current_thread(self, prompt: str) -> RunRecord:
+        run = self._require_current_thread()
+        turn_response = self.client.turn_start(
+            {
+                "threadId": run.thread_id,
+                "input": [{"type": "text", "text": prompt}],
+                "cwd": str(self.cwd),
+            }
+        )
+        if "turnId" in turn_response:
+            run.turn_id = turn_response["turnId"]
+        run.approval_needed = False
+        run.pending_request_id = None
+        run.response_text = ""
+        run.append_transcript(kind="user", message=prompt)
+        run.append_trace(kind="continued", label="Started follow-up turn")
+        run.mark_status(RunStatus.RUNNING, summary="Continuing thread")
+        self.store.upsert(run)
+        self.notifier.run_started("Run started", "A Codex follow-up is now running.")
+        return run
+
+    def show_panel(self) -> dict[str, object]:
+        if self.panel_controller is not None and hasattr(self.panel_controller, "show"):
+            return self.panel_controller.show()
+        return {"visible": False, "available": False}
+
+    def toggle_panel(self) -> dict[str, object]:
+        if self.panel_controller is not None and hasattr(self.panel_controller, "toggle"):
+            return self.panel_controller.toggle()
+        return {"visible": False, "available": False}
 
     def readiness(self) -> dict[str, object]:
         if hasattr(self.store, "assert_writable"):
@@ -230,6 +297,14 @@ class CodexBridgeService:
         run = self.store.get_run(run_id)
         if run is None:
             raise KeyError(f"Unknown run_id: {run_id}")
+        return run
+
+    def _require_current_thread(self) -> RunRecord:
+        run = self.current_run()
+        if run is None:
+            raise ValueError("No current run is available")
+        if not run.thread_id:
+            raise ValueError(f"Run {run.run_id} has no thread")
         return run
 
     def _classify_completed_outcome(self, response_text: str) -> RunStatus | None:

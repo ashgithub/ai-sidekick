@@ -31,9 +31,9 @@ Configuration lives in `config/codex_web_panel.yaml`. It controls the loopback p
 
 The bridge exposes `GET /healthz` for process liveness and `GET /readyz` for shortcut readiness. Readiness verifies the Codex binary is executable before Hammerspoon submits work. Run state is intentionally ephemeral: the bridge keeps only the current invocation in memory, and a restart clears it.
 
-`start_web_panel_daemon.sh` runs the bridge without opening the webview, but it still serves the sidekick at `http://127.0.0.1:8765/`. Run `./scripts/open_web_panel.sh` to inspect the current invocation in your browser. Use `./scripts/run_web_panel.sh` only when you specifically want the pywebview shell. Do not run both on the same port at the same time.
+`start_web_panel_daemon.sh` starts the bridge and a hidden native pywebview sidekick. Run `./scripts/open_web_panel.sh` or press `F5` to show/focus that sidekick. Use `./scripts/start_web_panel_daemon.sh --bridge-only` only when you explicitly want HTTP ingress without a native window.
 
-The sidekick shows only the current invocation by default: outcome banner, progress phases, response, and approval actions. Prompt, trace, and manual submission are collapsed into debug sections. Slack source lookup outcomes are explicit: `not_found` and `stale_source` no longer appear as generic successful completions.
+The sidekick shows only the current invocation by default: outcome banner, progress phases, response, steering/continue composer, and approval actions. Prompt, tool calls, and trace are collapsed into debug sections. Slack source lookup outcomes are explicit: `not_found` and `stale_source` no longer appear as generic successful completions.
 
 If port `8765` is already occupied, the launcher prints a diagnostic instead of a Python traceback. To replace the existing listener and stay on the configured port, run `./scripts/start_web_panel_daemon.sh --restart`.
 
@@ -45,8 +45,10 @@ Panel visibility is source-neutral and configurable. The current POC default is 
 
 Current integration scope:
 1. Slack hotkey ingress posts to `/ingest/slack`.
-2. The web panel can submit manual test runs through `/api/runs/manual`.
-3. The existing Tk `ai_tools` client and zsh widget do not submit to this bridge yet.
+2. The sidekick can steer the active turn, continue the current thread, or start a new task.
+3. `ai_tools` CLI/Hammerspoon text processing submits to `/api/invoke` by default.
+4. The legacy Tk client is still available with `./scripts/run_app.sh --tk`.
+5. The zsh command helper submits to the sidekick through `scripts/codex_nl_shell_sidekick.sh` and still inserts the generated command for review before Enter.
 
 ## Development
 

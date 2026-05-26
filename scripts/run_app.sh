@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run the AI Tools universal GUI from command line.
+# Submit AI Tools work to the resident Codex sidekick by default.
+# Use --tk to launch the legacy Tk GUI fallback.
 #
 # Sample invocations:
 #   # Ask / explain default (auto nudge)
@@ -19,4 +20,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-exec /opt/homebrew/bin/uv run clients/multi_tool_client.py "$@"
+if [[ "${1:-}" == "--tk" ]]; then
+  shift
+  exec /opt/homebrew/bin/uv run clients/multi_tool_client.py "$@"
+fi
+
+exec /opt/homebrew/bin/uv run python -m ai_tools.ingress.client --repo-root "${ROOT_DIR}" "$@"

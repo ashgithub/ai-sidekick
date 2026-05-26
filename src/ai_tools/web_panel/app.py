@@ -49,7 +49,14 @@ def build_service(
     }
     if config.codex.model and config.codex.model != "inherit":
         thread_options["model"] = config.codex.model
-    return CodexBridgeService(client=client, notifier=notifier, store=store, cwd=codex_cwd, thread_options=thread_options)
+    return CodexBridgeService(
+        client=client,
+        notifier=notifier,
+        store=store,
+        cwd=codex_cwd,
+        thread_options=thread_options,
+        panel_controller=panel_controller,
+    )
 
 
 def main() -> int:

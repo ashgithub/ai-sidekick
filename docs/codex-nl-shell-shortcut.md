@@ -39,13 +39,13 @@ The `ctrl+option+command+/` shortcut is the terminal natural-language-to-shell f
 3. Ghostty sends `ESC [999;1u` into the terminal.
 4. zsh runs the `codex-nl-shell` widget.
 5. The widget trims the current prompt buffer and strips a leading `# ` if present.
-6. It invokes Codex CLI:
+6. It invokes the resident sidekick-backed helper:
 
    ```bash
-   codex exec --ephemeral --sandbox read-only --skip-git-repo-check -m "${CODEX_NL_MODEL:-gpt-5.4-mini}" --cd "$PWD" -o "$tmp" "<conversion prompt>"
+   /Users/ashish/work/code/python/ai_tools/scripts/codex_nl_shell_sidekick.sh "$query"
    ```
 
-7. Codex returns one zsh command only.
+7. The helper submits a zsh command-generation task to the resident bridge and waits for one command.
 8. The widget replaces your current command line with that generated command and leaves it there for review.
 9. You press Enter only if the generated command looks right.
 
@@ -54,10 +54,10 @@ The shortcut does not execute the generated command automatically.
 ## Troubleshooting
 
 - If the shell says `codex: type a shell request first`, the prompt buffer was empty.
-- If it says `codex: CLI not found`, `codex` is not on `PATH`.
-- If it fails, stderr is copied to `/tmp/codex-nl-shell-last.err`.
+- If it says `codex: sidekick helper not found`, confirm the repo exists at `~/work/code/python/ai_tools`.
+- If it says `codex: sidekick failed`, start `./scripts/start_web_panel_daemon.sh --restart` and check `/tmp/codex-nl-shell-last.err`.
 - If the shortcut does nothing, confirm Ghostty has the `ctrl+opt+cmd+/` keybind and zsh has sourced `~/.zsh/widgets/codex-nl-shell.zsh`.
 
 ## Related Hammerspoon Bindings
 
-The Hammerspoon configs I found bind `ctrl+option+command+\` for older text-processing flows. The slash shortcut above is implemented through Ghostty plus zsh key bindings.
+The Hammerspoon configs bind `ctrl+option+command+\` for AI text submissions into the sidekick. The slash shortcut above is implemented through Ghostty plus zsh key bindings.

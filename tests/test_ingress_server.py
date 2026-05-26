@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from urllib import request
 
 from ai_tools.codex_bridge.models import SourceMetadata
@@ -8,6 +9,8 @@ from ai_tools.ingress.server import LocalIngressServer
 class StubService:
     def __init__(self, *, submit_error: Exception | None = None, ready: bool = True) -> None:
         self.submissions: list[tuple[SourceMetadata, str]] = []
+        self.routed_submissions: list[tuple[SourceMetadata, str, str]] = []
+        self.panel_actions: list[str] = []
         self.submit_error = submit_error
         self.ready = ready
 
@@ -16,6 +19,18 @@ class StubService:
             raise self.submit_error
         self.submissions.append((source, prompt))
         return type("Run", (), {"run_id": "run-123"})()
+
+    def submit_or_route(self, source: SourceMetadata, prompt: str, intent: str = "new"):
+        self.routed_submissions.append((source, prompt, intent))
+        return type("Run", (), {"run_id": "run-routed"})()
+
+    def show_panel(self):
+        self.panel_actions.append("show")
+        return {"visible": True}
+
+    def toggle_panel(self):
+        self.panel_actions.append("toggle")
+        return {"visible": True}
 
     def list_runs(self):
         return []
@@ -175,3 +190,80 @@ def test_ingress_server_returns_json_error_when_submit_crashes() -> None:
         "message": "state path is not writable",
         "detail": "PermissionError",
     }
+
+
+def test_ingress_server_accepts_source_neutral_invocations() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        payload = json.dumps(
+            {
+                "source_kind": "ai_tools",
+                "source_label": "AI Tools",
+                "source_id": "ai-tools-1",
+                "prompt": "Proofread this text",
+                "intent": "continue",
+            }
+        ).encode("utf-8")
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/invoke",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-routed",
+        "status": "accepted",
+        "panel_visibility": "manual",
+    }
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_kind == "ai_tools"
+    assert source.source_label == "AI Tools"
+    assert prompt == "Proofread this text"
+    assert intent == "continue"
+
+
+def test_ingress_server_exposes_panel_show_and_toggle_actions() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        show = request.urlopen(
+            request.Request(f"http://127.0.0.1:{server.port}/api/panel/show", data=b"{}", method="POST"),
+            timeout=2,
+        )
+        toggle = request.urlopen(
+            request.Request(f"http://127.0.0.1:{server.port}/api/panel/toggle", data=b"{}", method="POST"),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(show.read().decode("utf-8")) == {"visible": True}
+    assert json.loads(toggle.read().decode("utf-8")) == {"visible": True}
+    assert service.panel_actions == ["show", "toggle"]
+
+
+def test_static_assets_are_not_cached_between_sidekick_restarts(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "app.js").write_text('console.log("sidekick");', encoding="utf-8")
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0, static_dir=static_dir)
+
+    try:
+        server.start()
+        response = request.urlopen(f"http://127.0.0.1:{server.port}/static/app.js", timeout=2)
+    finally:
+        server.stop()
+
+    assert response.headers["Cache-Control"] == "no-store, max-age=0"

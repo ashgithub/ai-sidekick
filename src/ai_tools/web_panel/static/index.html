@@ -4,59 +4,68 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Tools Codex Sidekick</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/assets/fonts/fonts.css?v=sidekick">
+  <link rel="stylesheet" href="/static/styles.css?v=sidekick">
 </head>
 <body>
-  <main class="sidekick-shell" aria-label="Codex companion">
-    <section class="sidekick-card">
+  <main class="sidekick-shell" aria-label="Codex sidekick">
+    <section class="sidekick-panel">
       <header class="sidekick-header">
         <div>
-          <p class="eyebrow">AI Tools</p>
+          <p id="source-line" class="eyebrow">Waiting for a shortcut</p>
           <h1>Codex sidekick</h1>
         </div>
         <span id="active-status" class="status-pill status-idle">Idle</span>
       </header>
 
       <section id="run-summary" class="summary-card" aria-live="polite">
-        Waiting for a shortcut or manual prompt.
+        Waiting for a shortcut or task.
       </section>
 
-      <section class="section-card">
+      <section class="response-card" aria-label="Current response">
         <div class="section-header">
-          <h2>Progress</h2>
+          <h2>Response</h2>
           <button id="refresh-btn" type="button" class="ghost-button">Refresh</button>
         </div>
+        <div id="response-view" class="response-text">No response yet.</div>
+      </section>
+
+      <section class="progress-card" aria-label="Progress">
+        <h2>Progress</h2>
         <ol id="phase-list" class="phase-list">
           <li>No active invocation yet.</li>
         </ol>
       </section>
 
-      <section class="section-card response-card">
-        <div class="section-header">
-          <h2>Response</h2>
+      <section id="approval-box" class="approval-card">No approval needed.</section>
+
+      <section class="composer-card" aria-label="Sidekick composer">
+        <label id="composer-label" for="composer-input" data-steer-label="Steer this run">Start new task</label>
+        <textarea id="composer-input" rows="3" placeholder="Type a follow-up, steering note, or new task."></textarea>
+        <div class="composer-actions">
+          <button id="submit-composer-btn" type="button">Submit</button>
+          <button id="new-task-btn" type="button" class="ghost-button">New task</button>
         </div>
-        <div id="response-view" class="response-text">No response yet.</div>
       </section>
 
-      <section id="approval-box" class="approval-box">No approval needed.</section>
+      <div class="debug-stack">
+        <details class="debug-drawer">
+          <summary>Prompt</summary>
+          <pre id="prompt-view" class="debug-text">No prompt yet.</pre>
+        </details>
 
-      <details class="debug-panel">
-        <summary>Prompt</summary>
-        <pre id="prompt-view" class="debug-text">No prompt yet.</pre>
-      </details>
+        <details class="debug-drawer">
+          <summary>Tool calls</summary>
+          <pre id="tool-log" class="debug-text">No tool calls yet.</pre>
+        </details>
 
-      <details class="debug-panel">
-        <summary>Trace</summary>
-        <pre id="event-log" class="debug-text">No trace yet.</pre>
-      </details>
-
-      <details class="debug-panel">
-        <summary>Manual prompt</summary>
-        <textarea id="manual-prompt" rows="4" placeholder="Submit a local prompt through the resident bridge."></textarea>
-        <button id="submit-manual-btn" type="button">Submit prompt</button>
-      </details>
+        <details class="debug-drawer">
+          <summary>Trace</summary>
+          <pre id="event-log" class="debug-text">No trace yet.</pre>
+        </details>
+      </div>
     </section>
   </main>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=sidekick"></script>
 </body>
 </html>

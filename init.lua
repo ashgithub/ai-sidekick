@@ -4,6 +4,9 @@ require("hs.ipc")
 -- Paths
 local dir = os.getenv("HOME") .. "/work/code/python/ai_tools"
 local scriptPath = dir .. "/clients/multi_tool_client.py"
+local web_panel_config_script = dir .. "/scripts/codex_web_panel_config_json.sh"
+local web_panel_start_script = dir .. "/scripts/start_web_panel_daemon.sh"
+local ai_tools_sidekick_enabled = true
 -- local scriptMode = "-m proof"
 local default_window_width = 900
 local default_window_height = 800
@@ -81,6 +84,7 @@ local app_configs = {
 
 local status_messages = {
     processing = "Processing message from %s...",
+    queued = "Queued in Codex sidekick for %s.",
     cancelled = "Cancelled in AI Tools for %s.",
     error = "Error while processing %s: %s",
 }
@@ -103,10 +107,37 @@ local status_sounds = {
     },
     default = {
         processing = "Bottle",
+        queued = "Ping",
         cancelled = "Tink",
         error = "Sosumi",
     }
 }
+
+local function load_web_panel_config()
+    local output, ok = hs.execute(web_panel_config_script, true)
+    if ok and output and output ~= "" then
+        local parsed = hs.json.decode(output)
+        if parsed then
+            return parsed
+        end
+    end
+    return {
+        server = { port = 8765 },
+        panel = { visibility = "always" },
+    }
+end
+
+local function sidekick_urls()
+    local config = load_web_panel_config()
+    local port = tostring((config.server and config.server.port) or "8765")
+    local base_url = "http://127.0.0.1:" .. port
+    return {
+        ready = base_url .. "/readyz",
+        invoke = base_url .. "/api/invoke",
+        show = base_url .. "/api/panel/show",
+        panel_visibility = (config.panel and config.panel.visibility) or "always",
+    }
+end
 
 local function normalize_app_bucket(app_name)
     local lowered = (app_name or ""):lower()
@@ -245,6 +276,50 @@ local function run_processing(trigger_app, appName, config, scriptMode, windowAr
 
     if text:find("EOF") then
         show_status("error", appName, "Text contains EOF. Cannot safely use heredoc.", true)
+        return
+    end
+
+    if ai_tools_sidekick_enabled then
+        local urls = sidekick_urls()
+        hs.http.asyncGet(urls.ready, {}, function(status, body, headers)
+            if status ~= 200 then
+                hs.alert.show("Codex sidekick is not running\nStart: " .. web_panel_start_script .. " --restart", 6)
+                log.e("AI Tools sidekick bridge unavailable: status=" .. tostring(status) .. " body=" .. tostring(body))
+                if originalClipboard then
+                    hs.pasteboard.setContents(originalClipboard)
+                end
+                return
+            end
+
+            local prompt = table.concat({
+                "AI Tools shortcut request",
+                "",
+                "App context: " .. (appName or ""),
+                "",
+                "Input:",
+                text,
+            }, "\n")
+            local request_body = hs.json.encode({
+                source_kind = "ai_tools",
+                source_label = (appName and appName ~= "") and appName or "AI Tools",
+                source_id = "ai-tools-" .. tostring(os.time()),
+                prompt = prompt,
+                intent = "new",
+            })
+
+            hs.http.asyncPost(urls.invoke, request_body, { ["Content-Type"] = "application/json" }, function(post_status, post_body, post_headers)
+                if originalClipboard then
+                    hs.pasteboard.setContents(originalClipboard)
+                end
+                if post_status == 200 then
+                    show_status("queued", appName)
+                    hs.http.asyncPost(urls.show, "{}", { ["Content-Type"] = "application/json" }, function() end)
+                    return
+                end
+                hs.alert.show("Codex sidekick rejected the request\nStart: " .. web_panel_start_script .. " --restart", 6)
+                log.e("AI Tools sidekick submit failed: status=" .. tostring(post_status) .. " body=" .. tostring(post_body))
+            end)
+        end)
         return
     end
 

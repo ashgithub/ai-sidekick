@@ -179,8 +179,9 @@ def test_manual_bridge_launcher_uses_yaml_config_and_open_panel_helper() -> None
     assert "kill -KILL \"${pid}\"" in launcher
     assert "Could not stop PID" in launcher
     assert "Leave this terminal open" in launcher
-    assert "/usr/bin/open" in opener
-    assert "http://127.0.0.1:${PORT}/" in opener
+    assert "/api/panel/show" in opener
+    assert "/usr/bin/open" not in opener
+    assert "--bridge-only" in launcher
     assert "ai_tools.codex_bridge.config" in config_helper
 
 
