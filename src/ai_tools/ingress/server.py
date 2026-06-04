@@ -11,8 +11,21 @@ from urllib.parse import urlparse
 
 from ai_tools.codex_bridge.models import SourceMetadata
 
+from .client import build_ai_tools_prompt
 from .manual import manual_source_metadata
 from .slack import SlackIngressPayload, build_slack_worker_prompt
+
+
+def serialize_panel_run(run: Any) -> dict[str, Any]:
+    payload = run.model_dump(mode="json")
+    payload.pop("transcript", None)
+    return payload
+
+
+def serialize_panel_payload(service: Any) -> dict[str, Any]:
+    run = service.current_run()
+    panel_mode = service.panel_mode() if hasattr(service, "panel_mode") else "rewrite"
+    return {"run": serialize_panel_run(run) if run else None, "panel_mode": panel_mode}
 
 
 class LocalIngressServer:
@@ -87,12 +100,11 @@ class LocalIngressServer:
                     self._write_json(status, readiness)
                     return
                 if parsed.path in {"/runs", "/api/runs"}:
-                    runs = [run.model_dump(mode="json") for run in outer.service.list_runs()]
+                    runs = [serialize_panel_run(run) for run in outer.service.list_runs()]
                     self._write_json(HTTPStatus.OK, {"runs": runs})
                     return
                 if parsed.path == "/api/current-run":
-                    run = outer.service.current_run()
-                    self._write_json(HTTPStatus.OK, {"run": run.model_dump(mode="json") if run else None})
+                    self._write_json(HTTPStatus.OK, serialize_panel_payload(outer.service))
                     return
                 if parsed.path == "/api/events":
                     self._write_event_stream()
@@ -103,7 +115,7 @@ class LocalIngressServer:
                     if run is None:
                         self._write_json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
                         return
-                    self._write_json(HTTPStatus.OK, run.model_dump(mode="json"))
+                    self._write_json(HTTPStatus.OK, serialize_panel_run(run))
                     return
                 self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -172,11 +184,54 @@ class LocalIngressServer:
                         {"run_id": run.run_id, "status": "accepted", "panel_visibility": outer.panel_visibility},
                     )
                     return
+                if parsed.path == "/api/ai-tools":
+                    try:
+                        app_context = str(body.get("app_context", "")).strip() or None
+                        nudge = str(body.get("nudge", "")).strip() or None
+                        intent = str(body.get("intent", "new")).strip() or "new"
+                        source = SourceMetadata(
+                            source_kind=str(body.get("source_kind", "ai_tools")).strip() or "ai_tools",
+                            source_label=str(body.get("source_label", "AI Tools")).strip() or "AI Tools",
+                            source_id=str(body.get("source_id", "ai-tools")).strip() or "ai-tools",
+                        )
+                        prompt = build_ai_tools_prompt(
+                            text=str(body.get("text", "")).strip(),
+                            app_context=app_context,
+                            nudge=nudge,
+                        )
+                        run = outer.service.submit_or_route(
+                            source=source,
+                            prompt=prompt,
+                            intent=intent,
+                            thread_key=outer._ai_tools_thread_key(
+                                source=source,
+                                app_context=app_context,
+                                nudge=nudge,
+                            ),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        self._write_json(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            {
+                                "error": "submit_failed",
+                                "message": str(exc),
+                                "detail": type(exc).__name__,
+                            },
+                        )
+                        return
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {"run_id": run.run_id, "status": "accepted", "panel_visibility": outer.panel_visibility},
+                    )
+                    return
                 if parsed.path == "/api/panel/show":
-                    self._write_json(HTTPStatus.OK, outer.service.show_panel())
+                    self._write_json(HTTPStatus.OK, outer.service.show_panel(mode=str(body.get("mode", "")).strip() or None))
+                    return
+                if parsed.path == "/api/panel/hide":
+                    self._write_json(HTTPStatus.OK, outer.service.hide_panel())
                     return
                 if parsed.path == "/api/panel/toggle":
-                    self._write_json(HTTPStatus.OK, outer.service.toggle_panel())
+                    self._write_json(HTTPStatus.OK, outer.service.toggle_panel(mode=str(body.get("mode", "")).strip() or None))
                     return
                 if parsed.path.startswith("/runs/") and parsed.path.endswith("/approve"):
                     run_id = parsed.path.split("/")[2]
@@ -187,6 +242,32 @@ class LocalIngressServer:
                     run_id = parsed.path.split("/")[3]
                     run = outer.service.approve_run(run_id)
                     self._write_json(HTTPStatus.OK, {"run_id": run.run_id, "status": run.status.value})
+                    return
+                if parsed.path.startswith("/runs/") and parsed.path.endswith("/abort"):
+                    run_id = parsed.path.split("/")[2]
+                    run = outer.service.abort_run(run_id)
+                    self._write_json(HTTPStatus.OK, {"run_id": run.run_id, "status": run.status.value})
+                    return
+                if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/abort"):
+                    run_id = parsed.path.split("/")[3]
+                    run = outer.service.abort_run(run_id)
+                    self._write_json(HTTPStatus.OK, {"run_id": run.run_id, "status": run.status.value})
+                    return
+                if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/select-output"):
+                    run_id = parsed.path.split("/")[3]
+                    run = outer.service.select_run_output(
+                        run_id,
+                        output_key=str(body.get("output_key", "")).strip(),
+                        selected_text=str(body.get("text", "")).strip() or None,
+                    )
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {
+                            "run_id": run.run_id,
+                            "primary_output": run.primary_output,
+                            "selected_output_label": run.selected_output_label,
+                        },
+                    )
                     return
                 if parsed.path.startswith("/runs/") and parsed.path.endswith("/deny"):
                     run_id = parsed.path.split("/")[2]
@@ -226,9 +307,9 @@ class LocalIngressServer:
                 self.end_headers()
 
                 last_payload = ""
-                for _ in range(7200):
-                    run = outer.service.current_run()
-                    payload = json.dumps({"run": run.model_dump(mode="json") if run else None})
+                last_keepalive = time.monotonic()
+                while True:
+                    payload = json.dumps(serialize_panel_payload(outer.service))
                     if payload != last_payload:
                         try:
                             self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
@@ -236,6 +317,14 @@ class LocalIngressServer:
                         except (BrokenPipeError, ConnectionResetError):
                             return
                         last_payload = payload
+                        last_keepalive = time.monotonic()
+                    elif time.monotonic() - last_keepalive >= 15:
+                        try:
+                            self.wfile.write(b": keepalive\n\n")
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
+                        last_keepalive = time.monotonic()
                     time.sleep(0.5)
 
             def _serve_static(self, name: str, *, content_type: str) -> None:
@@ -255,3 +344,16 @@ class LocalIngressServer:
                 self.wfile.write(body)
 
         return Handler
+
+    def _ai_tools_thread_key(
+        self,
+        *,
+        source: SourceMetadata,
+        app_context: str | None,
+        nudge: str | None,
+    ) -> str:
+        profile = (nudge or app_context or source.source_label or "default").strip().lower()
+        app = (app_context or source.source_label or "default").strip().lower()
+        safe_profile = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in profile)
+        safe_app = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in app)
+        return f"ai_tools:{safe_profile}:{safe_app}"

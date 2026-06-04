@@ -1,4 +1,7 @@
-from ai_tools.codex_bridge.models import RunStatus, SourceMetadata
+import json
+from datetime import timedelta
+
+from ai_tools.codex_bridge.models import RunRecord, RunStatus, SourceMetadata, utc_now
 from ai_tools.codex_bridge.service import CodexBridgeService
 from ai_tools.codex_bridge.state import ActiveRunStateStore
 
@@ -9,15 +12,19 @@ class FakeClient:
         self.thread_start_calls: list[dict] = []
         self.turn_start_calls: list[dict] = []
         self.turn_steer_calls: list[dict] = []
+        self.turn_interrupt_calls: list[dict] = []
         self.approval_calls: list[tuple[str, object]] = []
         self.command_available = True
+        self.fail_ensure: Exception | None = None
 
     def ensure_started(self) -> None:
+        if self.fail_ensure is not None:
+            raise self.fail_ensure
         self.initialized = True
 
     def thread_start(self, params: dict) -> dict:
         self.thread_start_calls.append(params)
-        return {"thread": {"id": "thread-1"}}
+        return {"thread": {"id": f"thread-{len(self.thread_start_calls)}"}}
 
     def turn_start(self, params: dict) -> dict:
         self.turn_start_calls.append(params)
@@ -26,6 +33,10 @@ class FakeClient:
     def turn_steer(self, params: dict) -> dict:
         self.turn_steer_calls.append(params)
         return {"turnId": params.get("turnId", "turn-1")}
+
+    def turn_interrupt(self, params: dict) -> dict:
+        self.turn_interrupt_calls.append(params)
+        return {}
 
     def reply_to_server_request(self, request_id: str, payload: object) -> None:
         self.approval_calls.append((request_id, payload))
@@ -70,6 +81,124 @@ def test_submit_run_creates_thread_and_turn_and_marks_run_running() -> None:
     assert run.status is RunStatus.RUNNING
     assert notifier.events[0] == ("started", "Run started")
     assert [entry.kind for entry in run.trace[:4]] == ["accepted", "codex_started", "thread_started", "turn_started"]
+
+
+def test_submit_run_records_startup_failure_as_failed_run() -> None:
+    client = FakeClient()
+    client.fail_ensure = RuntimeError("app-server exited")
+    notifier = FakeNotifier()
+    service = CodexBridgeService(client=client, notifier=notifier, store=ActiveRunStateStore())
+
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Prompt",
+    )
+
+    assert run.status is RunStatus.FAILED
+    assert run.last_summary == "app-server exited"
+    assert run.trace[-1].kind == "failed"
+    assert service.current_run() == run
+    assert notifier.events == [("failed", "Run failed")]
+
+
+def test_ai_tools_codex_json_completion_preserves_structured_output_shape() -> None:
+    service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
+        prompt="AI Tools request",
+    )
+    payload = {
+        "render_kind": "text_pair",
+        "primary_output": "Rewritten text",
+        "structured_output": {"corrected": "Corrected text", "rewritten": "Rewritten text"},
+    }
+    service.handle_notification(
+        {
+            "method": "item/completed",
+            "params": {"threadId": "thread-1", "item": {"type": "agentMessage", "text": json.dumps(payload)}},
+        }
+    )
+
+    service.handle_notification(
+        {
+            "method": "turn/completed",
+            "params": {"threadId": "thread-1", "status": "completed", "lastAgentMessage": "Done"},
+        }
+    )
+
+    refreshed = service.get_run(run.run_id)
+    assert refreshed is not None
+    assert refreshed.status is RunStatus.COMPLETED
+    assert refreshed.render_kind == "text_pair"
+    assert refreshed.structured_output == {"corrected": "Corrected text", "rewritten": "Rewritten text"}
+    assert refreshed.primary_output == "Rewritten text"
+    assert refreshed.response_text == "Rewritten text"
+    assert refreshed.selected_output_label == "Rewritten"
+
+
+def test_select_run_output_updates_primary_text_for_alternatives() -> None:
+    service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="list files",
+    )
+    run.render_kind = "alternatives"
+    run.structured_output = {
+        "alternatives": [
+            {"value": "ls", "explanation": "basic"},
+            {"value": "ls -la", "explanation": "detailed"},
+        ]
+    }
+    run.primary_output = "ls"
+    run.response_text = "ls"
+    service.store.upsert(run)
+
+    updated = service.select_run_output(run.run_id, output_key="alternative:1")
+
+    assert updated.primary_output == "ls -la"
+    assert updated.response_text == "ls -la"
+    assert updated.selected_output_label == "Alternative 2"
+    assert updated.selected_output_text == "ls -la"
+    assert updated.trace[-1].kind == "output_selected"
+
+
+def test_select_run_output_updates_primary_text_for_text_pair() -> None:
+    service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
+        prompt="fix this",
+    )
+    run.render_kind = "text_pair"
+    run.structured_output = {"corrected": "Corrected text", "rewritten": "Rewritten text"}
+    run.primary_output = "Rewritten text"
+    run.response_text = "Rewritten text"
+    service.store.upsert(run)
+
+    updated = service.select_run_output(run.run_id, output_key="corrected")
+
+    assert updated.primary_output == "Corrected text"
+    assert updated.response_text == "Corrected text"
+    assert updated.selected_output_label == "Corrected"
+
+
+def test_select_run_output_can_apply_user_edited_text() -> None:
+    service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
+        prompt="fix this",
+    )
+    run.render_kind = "text_pair"
+    run.structured_output = {"corrected": "Corrected text", "rewritten": "Rewritten text"}
+    run.primary_output = "Rewritten text"
+    run.response_text = "Rewritten text"
+    service.store.upsert(run)
+
+    updated = service.select_run_output(run.run_id, output_key="rewritten", selected_text="Edited Slack text")
+
+    assert updated.primary_output == "Edited Slack text"
+    assert updated.response_text == "Edited Slack text"
+    assert updated.selected_output_label == "Rewritten"
+    assert updated.trace[-1].kind == "output_selected"
 
 
 def test_server_approval_request_marks_run_as_attention_needed() -> None:
@@ -120,6 +249,65 @@ def test_approve_run_replies_to_pending_server_request_and_clears_flag() -> None
     assert updated.status is RunStatus.RUNNING
 
 
+def test_abort_running_run_interrupts_current_turn_and_marks_cancelled() -> None:
+    client = FakeClient()
+    notifier = FakeNotifier()
+    service = CodexBridgeService(client=client, notifier=notifier, store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Do work",
+    )
+
+    updated = service.abort_run(run.run_id)
+
+    assert client.turn_interrupt_calls == [{"threadId": "thread-1", "turnId": "turn-1"}]
+    assert updated.status is RunStatus.CANCELLED
+    assert updated.last_summary == "Aborted by user"
+    assert updated.trace[-1].kind == "cancelled"
+    assert notifier.events[-1] == ("failed", "Run aborted")
+
+
+def test_abort_structured_ai_tools_run_without_codex_turn_marks_cancelled() -> None:
+    service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        prompt="fix this",
+    )
+    run.mark_status(RunStatus.RUNNING, summary="AI Tools request running")
+    service.store.upsert(run)
+
+    updated = service.abort_run(run.run_id)
+
+    assert updated.status is RunStatus.CANCELLED
+    assert updated.last_summary == "Aborted by user"
+    assert updated.thread_id is None
+    assert updated.turn_id is None
+
+
+def test_abort_pending_approval_cancels_request_without_extra_interrupt() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Do work",
+    )
+    service.handle_server_request(
+        {
+            "id": "approval-1",
+            "method": "item/commandExecution/requestApproval",
+            "params": {"threadId": "thread-1", "turnId": "turn-1", "command": ["git", "status"], "cwd": "/tmp/demo"},
+        }
+    )
+
+    updated = service.abort_run(run.run_id)
+
+    assert client.approval_calls == [("approval-1", {"decision": "cancel"})]
+    assert client.turn_interrupt_calls == []
+    assert updated.approval_needed is False
+    assert updated.pending_request_id is None
+    assert updated.status is RunStatus.CANCELLED
+
+
 def test_completed_notification_updates_summary_and_status() -> None:
     client = FakeClient()
     notifier = FakeNotifier()
@@ -142,6 +330,29 @@ def test_completed_notification_updates_summary_and_status() -> None:
     assert refreshed.last_summary == "Done"
     assert notifier.events[-1] == ("completed", "Run completed")
     assert refreshed.trace[-1].kind == "completed"
+
+
+def test_interrupted_turn_completion_marks_run_cancelled() -> None:
+    client = FakeClient()
+    notifier = FakeNotifier()
+    service = CodexBridgeService(client=client, notifier=notifier, store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="manual", source_label="Manual", source_id="manual-1"),
+        prompt="Do work",
+    )
+
+    service.handle_notification(
+        {
+            "method": "turn/completed",
+            "params": {"threadId": "thread-1", "status": "interrupted", "summary": "Interrupted"},
+        }
+    )
+
+    refreshed = service.get_run(run.run_id)
+    assert refreshed is not None
+    assert refreshed.status is RunStatus.CANCELLED
+    assert refreshed.last_summary == "Interrupted"
+    assert refreshed.trace[-1].kind == "cancelled"
 
 
 def test_agent_message_keeps_raw_stream_but_promotes_latest_completed_answer() -> None:
@@ -415,6 +626,123 @@ def test_submit_to_current_thread_routes_by_intent() -> None:
     assert client.turn_steer_calls
 
 
+def test_reuse_intent_uses_stable_thread_key_without_replacing_current_run_context() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+
+    first = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="Explain first error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+    service.handle_notification(
+        {
+            "method": "turn/completed",
+            "params": {"threadId": first.thread_id, "status": "completed", "lastAgentMessage": "Done"},
+        }
+    )
+    second = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-2"),
+        prompt="Explain next error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+
+    assert first.run_id != second.run_id
+    assert first.thread_id == "thread-1"
+    assert second.thread_id == "thread-1"
+    assert len(client.thread_start_calls) == 1
+    assert client.turn_start_calls[-1]["threadId"] == "thread-1"
+    assert service.get_run(first.run_id) is None
+    assert service.get_run(second.run_id) is not None
+
+
+def test_reuse_intent_starts_distinct_threads_for_distinct_tool_keys() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+
+    explain = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="Explain error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+    proofread = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-2"),
+        prompt="Fix text",
+        intent="reuse",
+        thread_key="ai_tools:slack:slack",
+    )
+
+    assert explain.thread_id == "thread-1"
+    assert proofread.thread_id == "thread-2"
+    assert len(client.thread_start_calls) == 2
+
+
+def test_reuse_intent_resets_thread_after_max_turns() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(
+        client=client,
+        notifier=FakeNotifier(),
+        store=ActiveRunStateStore(),
+        reusable_thread_max_turns=2,
+    )
+
+    first = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="Explain first error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+    second = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-2"),
+        prompt="Explain second error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+    third = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-3"),
+        prompt="Explain third error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+
+    assert first.thread_id == "thread-1"
+    assert second.thread_id == "thread-1"
+    assert third.thread_id == "thread-2"
+    assert len(client.thread_start_calls) == 2
+    assert third.trace[-2].kind == "thread_started"
+
+
+def test_reuse_intent_resets_thread_after_max_age() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(
+        client=client,
+        notifier=FakeNotifier(),
+        store=ActiveRunStateStore(),
+        reusable_thread_max_age_seconds=60,
+    )
+
+    first = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="Explain first error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+    service._reusable_threads["ai_tools:explain:ghostty"].created_at = utc_now() - timedelta(seconds=61)
+    second = service.submit_or_route(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-2"),
+        prompt="Explain second error",
+        intent="reuse",
+        thread_key="ai_tools:explain:ghostty",
+    )
+
+    assert first.thread_id == "thread-1"
+    assert second.thread_id == "thread-2"
+    assert len(client.thread_start_calls) == 2
+
+
 def test_tool_call_notifications_add_trace_entries() -> None:
     client = FakeClient()
     notifier = FakeNotifier()
@@ -523,3 +851,34 @@ def test_readiness_reports_unready_when_codex_command_is_missing(tmp_path) -> No
         "code": "codex_unavailable",
         "message": "codex command is not executable",
     }
+
+
+def test_panel_mode_persists_after_show_and_hide() -> None:
+    class FakePanelController:
+        def __init__(self) -> None:
+            self.panel_mode = "rewrite"
+            self.visible = False
+
+        def show(self, mode: str | None = None) -> dict[str, object]:
+            if mode in {"ask", "rewrite"}:
+                self.panel_mode = mode
+            self.visible = True
+            return {"visible": self.visible, "panel_mode": self.panel_mode}
+
+        def hide(self) -> dict[str, object]:
+            self.visible = False
+            return {"visible": self.visible, "panel_mode": self.panel_mode}
+
+    service = CodexBridgeService(
+        client=FakeClient(),
+        notifier=FakeNotifier(),
+        store=ActiveRunStateStore(),
+        panel_controller=FakePanelController(),
+    )
+
+    assert service.panel_mode() == "rewrite"
+    assert service.show_panel(mode="ask") == {"visible": True, "panel_mode": "ask"}
+    assert service.panel_mode() == "ask"
+    assert service.hide_panel() == {"visible": False, "panel_mode": "ask"}
+    assert service.panel_mode() == "ask"
+    assert service.show_panel(mode="unknown") == {"visible": True, "panel_mode": "ask"}

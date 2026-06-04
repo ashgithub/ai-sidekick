@@ -1,23 +1,41 @@
 const runSummaryEl = document.getElementById("run-summary");
 const promptViewEl = document.getElementById("prompt-view");
-const responseViewEl = document.getElementById("response-view");
 const rawStreamEl = document.getElementById("raw-stream-view");
 const eventLogEl = document.getElementById("event-log");
 const toolLogEl = document.getElementById("tool-log");
 const approvalBoxEl = document.getElementById("approval-box");
 const activeStatusEl = document.getElementById("active-status");
 const sourceLineEl = document.getElementById("source-line");
-const composerLabelEl = document.getElementById("composer-label");
-const composerInputEl = document.getElementById("composer-input");
+const abortBtn = document.getElementById("abort-btn");
 const refreshBtn = document.getElementById("refresh-btn");
-const newOutputBtn = document.getElementById("new-output-btn");
-const submitComposerBtn = document.getElementById("submit-composer-btn");
-const newTaskBtn = document.getElementById("new-task-btn");
+const closePanelBtn = document.getElementById("close-panel-btn");
+const modeRewriteBtn = document.getElementById("mode-rewrite-btn");
+const modeAskBtn = document.getElementById("mode-ask-btn");
+const rewritePaneEl = document.getElementById("rewrite-pane");
+const askPaneEl = document.getElementById("ask-pane");
+const rewriteHelperEl = document.getElementById("rewrite-helper");
+const versionTabsEl = document.getElementById("version-tabs");
+const versionRewrittenBtn = document.getElementById("version-rewritten-btn");
+const versionCorrectedBtn = document.getElementById("version-corrected-btn");
+const selectedOutputTextareaEl = document.getElementById("selected-output-textarea");
+const useOutputBtn = document.getElementById("use-output-btn");
+const copyOutputBtn = document.getElementById("copy-output-btn");
+const askInputEl = document.getElementById("ask-input");
+const askSubmitBtn = document.getElementById("ask-submit-btn");
+const askNewBtn = document.getElementById("ask-new-btn");
+const askOutputViewEl = document.getElementById("ask-output-view");
 const phaseListEl = document.getElementById("phase-list");
 
 let currentRun = null;
-let composerIntent = "new";
+let currentMode = "rewrite";
 let fallbackPoll = null;
+let eventStream = null;
+let eventStreamReconnectTimer = null;
+let selectedOutputKey = "rewritten";
+let selectedOutputDirty = false;
+let selectedOutputRunId = null;
+let outputSelecting = false;
+let askSubmitting = false;
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -25,6 +43,29 @@ async function fetchJson(url, options) {
     throw new Error(`Request failed: ${response.status}`);
   }
   return await response.json();
+}
+
+function normalizeMode(mode) {
+  return mode === "ask" ? "ask" : "rewrite";
+}
+
+function setMode(mode, options = {}) {
+  currentMode = normalizeMode(mode);
+  const askActive = currentMode === "ask";
+  modeAskBtn.classList.toggle("active", askActive);
+  modeRewriteBtn.classList.toggle("active", !askActive);
+  modeAskBtn.setAttribute("aria-selected", String(askActive));
+  modeRewriteBtn.setAttribute("aria-selected", String(!askActive));
+  askPaneEl.hidden = !askActive;
+  rewritePaneEl.hidden = askActive;
+  if (options.persist) {
+    fetchJson("/api/panel/show", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: currentMode }),
+    }).catch((error) => console.error(error));
+  }
+  renderModeContent();
 }
 
 function statusLabel(status) {
@@ -36,6 +77,7 @@ function statusLabel(status) {
     not_found: "Needs source",
     stale_source: "Stale source",
     completed: "Done",
+    cancelled: "Aborted",
     failed: "Failed",
   };
   return labels[status] || "Idle";
@@ -50,6 +92,7 @@ function statusClass(status) {
     not_found: "status-not_found",
     stale_source: "status-stale_source",
     completed: "status-completed",
+    cancelled: "status-cancelled",
     failed: "status-failed",
   };
   return classes[status] || "status-idle";
@@ -65,16 +108,10 @@ function summaryTitle(run) {
   if (run.status === "approval_needed") {
     return "Approval needed";
   }
+  if (run.status === "cancelled") {
+    return "Aborted";
+  }
   return run.last_summary || statusLabel(run.status);
-}
-
-function nearResponseBottom() {
-  return responseViewEl.scrollHeight - responseViewEl.scrollTop - responseViewEl.clientHeight < 48;
-}
-
-function scrollResponseToBottom() {
-  responseViewEl.scrollTop = responseViewEl.scrollHeight;
-  newOutputBtn.hidden = true;
 }
 
 function appendInlineText(parent, text) {
@@ -196,32 +233,184 @@ function renderReadableText(container, text, placeholder) {
   flushParagraph();
 }
 
-function setComposerForRun(run) {
+async function copyText(text) {
+  if (!text) {
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const scratch = document.createElement("textarea");
+  scratch.value = text;
+  scratch.setAttribute("readonly", "readonly");
+  scratch.style.position = "fixed";
+  scratch.style.left = "-9999px";
+  document.body.appendChild(scratch);
+  scratch.select();
+  document.execCommand("copy");
+  document.body.removeChild(scratch);
+}
+
+function selectedLabelForRun(run) {
   if (!run) {
-    composerIntent = "new";
-    composerLabelEl.textContent = "Start new task";
-    submitComposerBtn.textContent = "Start";
+    return "Rewritten";
+  }
+  return run.selected_output_label === "Corrected" ? "Corrected" : "Rewritten";
+}
+
+function outputText(run, key) {
+  if (!run) {
+    return "";
+  }
+  const structured = run.structured_output || {};
+  if (key === "corrected") {
+    return structured.corrected || "";
+  }
+  if (key === "rewritten") {
+    return structured.rewritten || run.primary_output || run.response_text || "";
+  }
+  return run.primary_output || run.response_text || "";
+}
+
+function canSelectOutput(run) {
+  return run && run.source && run.source.source_kind === "ai_tools" && run.status === "completed";
+}
+
+function renderVersionTabs(run) {
+  const isTextPair = run && run.render_kind === "text_pair";
+  versionTabsEl.hidden = !isTextPair;
+  if (!isTextPair) {
+    selectedOutputKey = "primary";
     return;
   }
-  if (["queued", "starting", "running"].includes(run.status)) {
-    composerIntent = "steer";
-    composerLabelEl.textContent = "Steer this run";
-    submitComposerBtn.textContent = "Steer";
+  if (selectedOutputRunId !== run.run_id) {
+    selectedOutputKey = selectedLabelForRun(run).toLowerCase();
+    selectedOutputRunId = run.run_id;
+    selectedOutputDirty = false;
+  }
+  versionRewrittenBtn.classList.toggle("active", selectedOutputKey === "rewritten");
+  versionCorrectedBtn.classList.toggle("active", selectedOutputKey === "corrected");
+  versionRewrittenBtn.setAttribute("aria-selected", String(selectedOutputKey === "rewritten"));
+  versionCorrectedBtn.setAttribute("aria-selected", String(selectedOutputKey === "corrected"));
+}
+
+function renderRewritePane() {
+  const run = currentRun;
+  renderVersionTabs(run);
+  const output = outputText(run, selectedOutputKey);
+  const shouldReplaceText = !selectedOutputDirty || selectedOutputRunId !== (run && run.run_id);
+  if (shouldReplaceText) {
+    selectedOutputTextareaEl.value = output;
+  }
+  const canUse = canSelectOutput(run) && selectedOutputTextareaEl.value.trim() !== "";
+  useOutputBtn.disabled = !canUse || outputSelecting;
+  copyOutputBtn.disabled = selectedOutputTextareaEl.value.trim() === "" || outputSelecting;
+  if (!run) {
+    rewriteHelperEl.textContent = "Select text in an app, run the shortcut, then choose the version to use.";
+    selectedOutputTextareaEl.placeholder = "Output will appear here.";
     return;
   }
-  if (run.thread_id) {
-    composerIntent = "continue";
-    composerLabelEl.textContent = "Continue this thread";
-    submitComposerBtn.textContent = "Continue";
+  if (run.status === "running" || run.status === "starting" || run.status === "queued") {
+    rewriteHelperEl.textContent = "Working on the selected text.";
+    selectedOutputTextareaEl.placeholder = "Writing output...";
     return;
   }
-  composerIntent = "new";
-  composerLabelEl.textContent = "Start new task";
-  submitComposerBtn.textContent = "Start";
+  rewriteHelperEl.textContent = run.render_kind === "text_pair"
+    ? "Switch between versions, edit if needed, then use the selected version."
+    : "Review the output, edit if needed, then use it.";
+}
+
+function renderAskPane() {
+  const shouldShowAnswer = currentRun && currentRun.source && currentRun.source.source_label === "Ask";
+  const answer = shouldShowAnswer ? currentRun.primary_output || currentRun.response_text || "" : "";
+  renderReadableText(askOutputViewEl, answer, currentRun && currentRun.status !== "completed" ? "Working..." : "No answer yet.");
+}
+
+function renderModeContent() {
+  if (currentMode === "ask") {
+    renderAskPane();
+    return;
+  }
+  renderRewritePane();
+}
+
+async function selectOutput() {
+  if (!canSelectOutput(currentRun) || outputSelecting) {
+    return;
+  }
+  const text = selectedOutputTextareaEl.value.trim();
+  if (!text) {
+    return;
+  }
+  outputSelecting = true;
+  renderRewritePane();
+  try {
+    await fetchJson(`/api/runs/${currentRun.run_id}/select-output`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ output_key: selectedOutputKey, text }),
+    });
+    await copyText(text);
+    selectedOutputDirty = false;
+    await refreshRuns();
+  } finally {
+    outputSelecting = false;
+    renderRewritePane();
+  }
+}
+
+async function submitAsk() {
+  if (askSubmitting) {
+    return;
+  }
+  const prompt = askInputEl.value.trim();
+  if (!prompt) {
+    return;
+  }
+  askSubmitting = true;
+  askSubmitBtn.disabled = true;
+  askNewBtn.disabled = true;
+  try {
+    await fetchJson("/api/invoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_kind: "manual",
+        source_label: "Ask",
+        source_id: `ask-${Date.now()}`,
+        prompt,
+        intent: "new",
+      }),
+    });
+    askInputEl.value = "";
+    await refreshRuns();
+  } finally {
+    askSubmitting = false;
+    askSubmitBtn.disabled = false;
+    askNewBtn.disabled = false;
+  }
+}
+
+async function closePanel() {
+  closePanelBtn.disabled = true;
+  try {
+    await fetchJson("/api/panel/hide", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  } finally {
+    closePanelBtn.disabled = false;
+  }
+}
+
+function canAbort(run) {
+  return run && ["queued", "starting", "running", "approval_needed"].includes(run.status);
 }
 
 function renderSummary(run) {
   runSummaryEl.innerHTML = "";
+  if (!run) {
+    runSummaryEl.textContent = currentMode === "ask" ? "Ask a question." : "Ready.";
+    return;
+  }
 
   const title = document.createElement("div");
   title.className = "summary-title";
@@ -241,6 +430,7 @@ function traceLabel(entry) {
     accepted: "Queued",
     codex_started: "Codex ready",
     thread_started: "Thread ready",
+    thread_reused: "Thread ready",
     turn_started: "Working",
     steered: "Steered",
     continued: "Follow-up started",
@@ -249,9 +439,11 @@ function traceLabel(entry) {
     tool_completed: `Tool completed${tool}${duration}`,
     approval_started: "Approval review",
     approval_completed: "Approval review complete",
+    output_selected: "Output selected",
     not_found: "No source found",
     stale_source: "Source is stale",
     completed: "Completed",
+    cancelled: "Aborted",
     failed: "Failed",
   };
   return labels[entry.kind] || entry.label || entry.kind;
@@ -259,18 +451,18 @@ function traceLabel(entry) {
 
 function renderPhaseList(run) {
   phaseListEl.innerHTML = "";
-  const trace = Array.isArray(run.trace) ? run.trace : [];
+  const trace = run && Array.isArray(run.trace) ? run.trace : [];
   const visible = trace.filter((entry) => entry.kind !== "tool_completed" || entry.tool_name);
   if (!visible.length) {
     const item = document.createElement("li");
-    item.textContent = "Waiting for Codex to report progress.";
+    item.textContent = "No activity yet.";
     phaseListEl.appendChild(item);
     return;
   }
 
   visible.slice(-6).forEach((entry, index, entries) => {
     const item = document.createElement("li");
-    if (index === entries.length - 1 && !["completed", "failed", "not_found", "stale_source"].includes(entry.kind)) {
+    if (index === entries.length - 1 && !["completed", "failed", "cancelled", "not_found", "stale_source"].includes(entry.kind)) {
       item.className = "current";
     }
     item.textContent = traceLabel(entry);
@@ -279,7 +471,7 @@ function renderPhaseList(run) {
 }
 
 function renderTrace(run) {
-  const trace = Array.isArray(run.trace) ? run.trace : [];
+  const trace = run && Array.isArray(run.trace) ? run.trace : [];
   if (!trace.length) {
     eventLogEl.textContent = "No trace yet.";
     return;
@@ -293,7 +485,7 @@ function renderTrace(run) {
 }
 
 function renderTools(run) {
-  const trace = Array.isArray(run.trace) ? run.trace : [];
+  const trace = run && Array.isArray(run.trace) ? run.trace : [];
   const tools = trace.filter((entry) => entry.kind === "tool_started" || entry.kind === "tool_completed");
   if (!tools.length) {
     toolLogEl.textContent = "No tool calls yet.";
@@ -304,13 +496,13 @@ function renderTools(run) {
 
 function renderApproval(run) {
   approvalBoxEl.innerHTML = "";
-  if (!run.approval_needed) {
-    approvalBoxEl.textContent = "No approval needed.";
+  approvalBoxEl.hidden = !(run && run.approval_needed);
+  if (!run || !run.approval_needed) {
     return;
   }
 
   const message = document.createElement("div");
-  message.textContent = "Codex needs approval before continuing.";
+  message.textContent = "Approval needed before Codex can continue.";
   approvalBoxEl.appendChild(message);
 
   const actions = document.createElement("div");
@@ -331,77 +523,29 @@ function renderApproval(run) {
 
 function renderRun(run) {
   currentRun = run;
-  const shouldStickToBottom = nearResponseBottom();
-  sourceLineEl.textContent = `${run.source.source_label} - ${run.thread_id || "Starting"}`;
-  activeStatusEl.textContent = statusLabel(run.status);
-  activeStatusEl.className = `status-pill ${statusClass(run.status)}`;
+  sourceLineEl.textContent = run ? `${run.source.source_label} - ${run.thread_id || "Starting"}` : "Waiting for a shortcut";
+  activeStatusEl.textContent = run ? statusLabel(run.status) : "Idle";
+  activeStatusEl.className = `status-pill ${run ? statusClass(run.status) : "status-idle"}`;
+  abortBtn.hidden = !canAbort(run);
+  abortBtn.disabled = !canAbort(run);
+  promptViewEl.textContent = run && run.prompt ? run.prompt : "No prompt yet.";
+  rawStreamEl.textContent = run && run.raw_response_text ? run.raw_response_text : "No raw output yet.";
   renderSummary(run);
   renderPhaseList(run);
-  renderReadableText(
-    responseViewEl,
-    run.response_text || "",
-    run.raw_response_text ? "Writing final answer..." : "No answer yet.",
-  );
-  rawStreamEl.textContent = run.raw_response_text || "No raw stream yet.";
-  promptViewEl.textContent = run.prompt || "No prompt yet.";
   renderTrace(run);
   renderTools(run);
   renderApproval(run);
-  setComposerForRun(run);
-  if (shouldStickToBottom) {
-    scrollResponseToBottom();
-  } else if (["queued", "starting", "running"].includes(run.status)) {
-    newOutputBtn.hidden = false;
-  }
-}
-
-function renderIdle() {
-  currentRun = null;
-  sourceLineEl.textContent = "Waiting for a shortcut";
-  activeStatusEl.textContent = "Idle";
-  activeStatusEl.className = "status-pill status-idle";
-  runSummaryEl.textContent = "Waiting for a shortcut or task.";
-  phaseListEl.innerHTML = "<li>No active invocation yet.</li>";
-  renderReadableText(responseViewEl, "", "No answer yet.");
-  rawStreamEl.textContent = "No raw stream yet.";
-  promptViewEl.textContent = "No prompt yet.";
-  eventLogEl.textContent = "No trace yet.";
-  toolLogEl.textContent = "No tool calls yet.";
-  approvalBoxEl.textContent = "No approval needed.";
-  setComposerForRun(null);
+  renderModeContent();
 }
 
 function renderPayload(payload) {
-  if (payload.run) {
-    renderRun(payload.run);
-  } else {
-    renderIdle();
-  }
+  setMode(payload.panel_mode || currentMode);
+  renderRun(payload.run || null);
 }
 
 async function refreshRuns() {
   const payload = await fetchJson("/api/current-run");
   renderPayload(payload);
-}
-
-async function submitComposer(intentOverride) {
-  const prompt = composerInputEl.value.trim();
-  if (!prompt) {
-    return;
-  }
-  await fetchJson("/api/invoke", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source_kind: "manual",
-      source_label: "Sidekick",
-      source_id: `sidekick-${Date.now()}`,
-      prompt,
-      intent: intentOverride || composerIntent,
-    }),
-  });
-  composerInputEl.value = "";
-  await refreshRuns();
 }
 
 async function approveRun(runId) {
@@ -414,29 +558,93 @@ async function denyRun(runId) {
   await refreshRuns();
 }
 
+async function abortRun(runId) {
+  if (!runId) {
+    return;
+  }
+  abortBtn.disabled = true;
+  await fetchJson(`/api/runs/${runId}/abort`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  await refreshRuns();
+}
+
+function startFallbackPolling() {
+  if (fallbackPoll) {
+    return;
+  }
+  fallbackPoll = setInterval(() => {
+    refreshRuns().catch((error) => console.error(error));
+  }, 3000);
+}
+
+function stopFallbackPolling() {
+  if (!fallbackPoll) {
+    return;
+  }
+  clearInterval(fallbackPoll);
+  fallbackPoll = null;
+}
+
+function scheduleEventStreamReconnect() {
+  if (eventStreamReconnectTimer) {
+    return;
+  }
+  eventStreamReconnectTimer = setTimeout(startEventStream, 1000);
+}
+
 function startEventStream() {
   if (!window.EventSource) {
     return false;
   }
+  if (eventStream && eventStream.readyState !== EventSource.CLOSED) {
+    return true;
+  }
+  eventStreamReconnectTimer = null;
   const events = new EventSource("/api/events");
+  eventStream = events;
+  events.onopen = () => {
+    stopFallbackPolling();
+  };
   events.onmessage = (event) => {
     renderPayload(JSON.parse(event.data));
   };
   events.onerror = () => {
     events.close();
-    if (!fallbackPoll) {
-      fallbackPoll = setInterval(() => {
-        refreshRuns().catch((error) => console.error(error));
-      }, 3000);
+    if (eventStream === events) {
+      eventStream = null;
     }
+    startFallbackPolling();
+    scheduleEventStreamReconnect();
   };
   return true;
 }
 
+modeRewriteBtn.addEventListener("click", () => setMode("rewrite", { persist: true }));
+modeAskBtn.addEventListener("click", () => setMode("ask", { persist: true }));
+versionRewrittenBtn.addEventListener("click", () => {
+  selectedOutputKey = "rewritten";
+  selectedOutputDirty = false;
+  renderRewritePane();
+});
+versionCorrectedBtn.addEventListener("click", () => {
+  selectedOutputKey = "corrected";
+  selectedOutputDirty = false;
+  renderRewritePane();
+});
+selectedOutputTextareaEl.addEventListener("input", () => {
+  selectedOutputDirty = true;
+  renderRewritePane();
+});
 refreshBtn.addEventListener("click", refreshRuns);
-newOutputBtn.addEventListener("click", scrollResponseToBottom);
-submitComposerBtn.addEventListener("click", () => submitComposer());
-newTaskBtn.addEventListener("click", () => submitComposer("new"));
+closePanelBtn.addEventListener("click", () => closePanel().catch((error) => console.error(error)));
+abortBtn.addEventListener("click", () => abortRun(currentRun && currentRun.run_id));
+useOutputBtn.addEventListener("click", () => selectOutput().catch((error) => console.error(error)));
+copyOutputBtn.addEventListener("click", () => copyText(selectedOutputTextareaEl.value).catch((error) => console.error(error)));
+askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => console.error(error)));
+askNewBtn.addEventListener("click", () => {
+  askInputEl.value = "";
+  renderReadableText(askOutputViewEl, "", "No answer yet.");
+  askInputEl.focus();
+});
 
 refreshRuns().catch((error) => {
   console.error(error);
@@ -444,7 +652,5 @@ refreshRuns().catch((error) => {
 });
 
 if (!startEventStream()) {
-  fallbackPoll = setInterval(() => {
-    refreshRuns().catch((error) => console.error(error));
-  }, 3000);
+  startFallbackPolling();
 }

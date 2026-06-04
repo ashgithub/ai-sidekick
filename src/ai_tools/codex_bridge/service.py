@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any
 
-from .models import RunRecord, RunStatus, SourceMetadata
+from .models import RunRecord, RunStatus, SourceMetadata, utc_now
 from .notifications import NullNotifier
 from .protocol import CodexAppServerClient
 from .state import ActiveRunStateStore
+
+
+@dataclass
+class ReusableThread:
+    thread_id: str
+    created_at: datetime
+    turn_count: int = 0
 
 
 class CodexBridgeService:
@@ -21,6 +31,8 @@ class CodexBridgeService:
         cwd: Path | None = None,
         thread_options: dict[str, Any] | None = None,
         panel_controller: object | None = None,
+        reusable_thread_max_turns: int = 20,
+        reusable_thread_max_age_seconds: int = 3600,
     ) -> None:
         self.client = client
         self.notifier = notifier or NullNotifier()
@@ -28,16 +40,20 @@ class CodexBridgeService:
         self.cwd = cwd or Path.cwd()
         self.thread_options = thread_options or {}
         self.panel_controller = panel_controller
+        self.reusable_thread_max_turns = reusable_thread_max_turns
+        self.reusable_thread_max_age_seconds = reusable_thread_max_age_seconds
         self._active_run_id: str | None = None
         self._thread_to_run_id: dict[str, str] = {}
+        self._reusable_threads: dict[str, ReusableThread] = {}
         self._tool_started_at: dict[str, Any] = {}
         self._completed_agent_message_threads: set[str] = set()
+        self._panel_mode = "rewrite"
         if hasattr(self.client, "set_notification_handler"):
             self.client.set_notification_handler(self.handle_notification)
         if hasattr(self.client, "set_server_request_handler"):
             self.client.set_server_request_handler(self.handle_server_request)
 
-    def submit_run(self, *, source: SourceMetadata, prompt: str) -> RunRecord:
+    def submit_run(self, *, source: SourceMetadata, prompt: str, thread_key: str | None = None) -> RunRecord:
         run = RunRecord.create(source=source, prompt=prompt)
         run.append_trace(kind="accepted", label=f"Accepted {source.source_label} request")
         run.mark_status(RunStatus.STARTING, summary="Starting run")
@@ -45,39 +61,83 @@ class CodexBridgeService:
         self.store.upsert(run)
         self._active_run_id = run.run_id
 
-        self.client.ensure_started()
-        run.append_trace(kind="codex_started", label="Codex app-server ready")
-        self.store.upsert(run)
-        thread_params = {
-            "cwd": str(self.cwd),
-            "approvalPolicy": "on-request",
-            "approvalsReviewer": "auto_review",
-            "personality": "pragmatic",
-        }
-        thread_params.update(self.thread_options)
-        thread_response = self.client.thread_start(thread_params)
-        run.thread_id = thread_response["thread"]["id"]
-        run.append_trace(kind="thread_started", label="Codex thread started")
-        self._thread_to_run_id[run.thread_id] = run.run_id
-        turn_response = self.client.turn_start(
-            {
-                "threadId": run.thread_id,
-                "input": [{"type": "text", "text": prompt}],
+        try:
+            self.client.ensure_started()
+            run.append_trace(kind="codex_started", label="Codex app-server ready")
+            self.store.upsert(run)
+            thread_params = {
                 "cwd": str(self.cwd),
+                "approvalPolicy": "on-request",
+                "approvalsReviewer": "auto_review",
+                "personality": "pragmatic",
             }
-        )
-        if "turnId" in turn_response:
-            run.turn_id = turn_response["turnId"]
-        run.append_trace(kind="turn_started", label="Codex turn started")
-        run.mark_status(RunStatus.RUNNING, summary="Run started")
-        self.store.upsert(run)
-        self.notifier.run_started("Run started", "A Codex task is now running.")
+            thread_params.update(self.thread_options)
+            reusable_thread = self._usable_reusable_thread(thread_key)
+            if reusable_thread:
+                reusable_thread.turn_count += 1
+                run.thread_id = reusable_thread.thread_id
+                run.append_trace(kind="thread_reused", label=f"Reused Codex thread: {thread_key}")
+            else:
+                thread_response = self.client.thread_start(thread_params)
+                run.thread_id = thread_response["thread"]["id"]
+                run.append_trace(kind="thread_started", label="Codex thread started")
+                if thread_key:
+                    self._reusable_threads[thread_key] = ReusableThread(
+                        thread_id=run.thread_id,
+                        created_at=utc_now(),
+                        turn_count=1,
+                    )
+            self._thread_to_run_id[run.thread_id] = run.run_id
+            turn_response = self.client.turn_start(
+                {
+                    "threadId": run.thread_id,
+                    "input": [{"type": "text", "text": prompt}],
+                    "cwd": str(self.cwd),
+                }
+            )
+            if "turnId" in turn_response:
+                run.turn_id = turn_response["turnId"]
+            run.append_trace(kind="turn_started", label="Codex turn started")
+            run.mark_status(RunStatus.RUNNING, summary="Run started")
+            self.store.upsert(run)
+            self.notifier.run_started("Run started", "A Codex task is now running.")
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc) or type(exc).__name__
+            run.mark_status(RunStatus.FAILED, summary=message)
+            run.append_trace(kind="failed", label=message, error=type(exc).__name__)
+            self.store.upsert(run)
+            self.notifier.run_failed("Run failed", message)
         return run
 
-    def submit_or_route(self, *, source: SourceMetadata, prompt: str, intent: str = "new") -> RunRecord:
+    def _usable_reusable_thread(self, thread_key: str | None) -> ReusableThread | None:
+        if not thread_key:
+            return None
+        reusable_thread = self._reusable_threads.get(thread_key)
+        if reusable_thread is None:
+            return None
+        if self.reusable_thread_max_turns > 0 and reusable_thread.turn_count >= self.reusable_thread_max_turns:
+            self._reusable_threads.pop(thread_key, None)
+            return None
+        if self.reusable_thread_max_age_seconds > 0:
+            age_seconds = (utc_now() - reusable_thread.created_at).total_seconds()
+            if age_seconds >= self.reusable_thread_max_age_seconds:
+                self._reusable_threads.pop(thread_key, None)
+                return None
+        return reusable_thread
+
+    def submit_or_route(
+        self,
+        *,
+        source: SourceMetadata,
+        prompt: str,
+        intent: str = "new",
+        thread_key: str | None = None,
+    ) -> RunRecord:
         normalized = (intent or "new").strip().lower()
         if normalized == "new":
             return self.submit_run(source=source, prompt=prompt)
+        if normalized == "reuse":
+            return self.submit_run(source=source, prompt=prompt, thread_key=thread_key)
         if normalized == "steer":
             return self.steer_current_run(prompt)
         if normalized == "continue":
@@ -130,15 +190,96 @@ class CodexBridgeService:
         self.notifier.run_started("Run started", "A Codex follow-up is now running.")
         return run
 
-    def show_panel(self) -> dict[str, object]:
-        if self.panel_controller is not None and hasattr(self.panel_controller, "show"):
-            return self.panel_controller.show()
-        return {"visible": False, "available": False}
+    def panel_mode(self) -> str:
+        return self._panel_mode
 
-    def toggle_panel(self) -> dict[str, object]:
+    def show_panel(self, mode: str | None = None) -> dict[str, object]:
+        self._set_panel_mode(mode)
+        if self.panel_controller is not None and hasattr(self.panel_controller, "show"):
+            return self._sync_panel_result(self.panel_controller.show(mode=self._panel_mode))
+        return {"visible": False, "available": False, "panel_mode": self._panel_mode}
+
+    def toggle_panel(self, mode: str | None = None) -> dict[str, object]:
+        self._set_panel_mode(mode)
         if self.panel_controller is not None and hasattr(self.panel_controller, "toggle"):
-            return self.panel_controller.toggle()
-        return {"visible": False, "available": False}
+            return self._sync_panel_result(self.panel_controller.toggle(mode=self._panel_mode))
+        return {"visible": False, "available": False, "panel_mode": self._panel_mode}
+
+    def hide_panel(self) -> dict[str, object]:
+        if self.panel_controller is not None and hasattr(self.panel_controller, "hide"):
+            return self._sync_panel_result(self.panel_controller.hide())
+        return {"visible": False, "available": False, "panel_mode": self._panel_mode}
+
+    def _set_panel_mode(self, mode: str | None) -> str:
+        normalized = (mode or "").strip().lower()
+        if normalized in {"ask", "rewrite"}:
+            self._panel_mode = normalized
+        return self._panel_mode
+
+    def _sync_panel_result(self, result: dict[str, object]) -> dict[str, object]:
+        result_mode = result.get("panel_mode")
+        if isinstance(result_mode, str):
+            self._set_panel_mode(result_mode)
+        result["panel_mode"] = self._panel_mode
+        return result
+
+    def select_run_output(self, run_id: str, *, output_key: str, selected_text: str | None = None) -> RunRecord:
+        run = self._require_run(run_id)
+        label, text = self._resolve_output_selection(run, output_key)
+        if selected_text is not None:
+            edited = selected_text.strip()
+            if edited:
+                text = edited
+        run.primary_output = text
+        run.response_text = text
+        run.selected_output_label = label
+        run.selected_output_text = text
+        run.append_trace(kind="output_selected", label=f"Selected output: {label}")
+        self.store.upsert(run)
+        return run
+
+    def _default_output_label(self, run: RunRecord) -> str:
+        if run.render_kind == "text_pair":
+            return "Rewritten"
+        if run.render_kind == "alternatives":
+            return "Alternative 1"
+        return "Answer"
+
+    def _resolve_output_selection(self, run: RunRecord, output_key: str) -> tuple[str, str]:
+        structured = run.structured_output or {}
+        normalized = output_key.strip().lower()
+        if run.render_kind == "text_pair":
+            if normalized not in {"rewritten", "corrected"}:
+                raise ValueError(f"Unknown text output key: {output_key}")
+            value = str(structured.get(normalized, "")).strip()
+            if not value:
+                raise ValueError(f"Text output is empty: {output_key}")
+            return normalized.capitalize(), value
+
+        if run.render_kind == "alternatives" and normalized.startswith("alternative:"):
+            raw_index = normalized.split(":", 1)[1]
+            try:
+                index = int(raw_index)
+            except ValueError as exc:
+                raise ValueError(f"Invalid alternative index: {raw_index}") from exc
+            alternatives = structured.get("alternatives")
+            if not isinstance(alternatives, list) or index < 0 or index >= len(alternatives):
+                raise ValueError(f"Alternative index out of range: {index}")
+            selected = alternatives[index]
+            if not isinstance(selected, dict):
+                raise ValueError(f"Alternative is not structured: {index}")
+            value = str(selected.get("value", "")).strip()
+            if not value:
+                raise ValueError(f"Alternative output is empty: {index}")
+            return f"Alternative {index + 1}", value
+
+        if normalized in {"primary", "answer"}:
+            value = (run.primary_output or run.response_text).strip()
+            if not value:
+                raise ValueError("Primary output is empty")
+            return "Answer", value
+
+        raise ValueError(f"Unknown output key: {output_key}")
 
     def readiness(self) -> dict[str, object]:
         if hasattr(self.store, "assert_writable"):
@@ -196,6 +337,35 @@ class CodexBridgeService:
         run.mark_status(RunStatus.FAILED, summary="Approval denied")
         self.store.upsert(run)
         self.notifier.run_failed("Run failed", "A Codex task was denied.")
+        return run
+
+    def abort_run(self, run_id: str) -> RunRecord:
+        run = self._require_run(run_id)
+        terminal = {
+            RunStatus.COMPLETED,
+            RunStatus.CANCELLED,
+            RunStatus.FAILED,
+            RunStatus.NOT_FOUND,
+            RunStatus.STALE_SOURCE,
+        }
+        if run.status in terminal:
+            return run
+
+        if run.pending_request_id:
+            self.client.reply_to_server_request(run.pending_request_id, {"decision": "cancel"})
+        else:
+            if not run.thread_id or not run.turn_id:
+                run.append_trace(kind="cancel_requested", label="No Codex turn; marking local run cancelled")
+            else:
+                self.client.turn_interrupt({"threadId": run.thread_id, "turnId": run.turn_id})
+
+        run.pending_request_id = None
+        run.approval_needed = False
+        run.mark_status(RunStatus.CANCELLED, summary="Aborted by user")
+        run.append_trace(kind="cancelled", label="Aborted by user")
+        run.append_transcript(kind="event", message="abort")
+        self.store.upsert(run)
+        self.notifier.run_failed("Run aborted", "A Codex task was aborted.")
         return run
 
     def handle_notification(self, payload: dict[str, Any]) -> None:
@@ -263,9 +433,11 @@ class CodexBridgeService:
                 params.get("lastAgentMessage")
                 or params.get("summary")
                 or (turn.get("summary") if isinstance(turn, dict) else None)
-                or "Run completed"
+                or ("Interrupted" if status == "interrupted" else "Run completed")
             )
             if status == "completed":
+                if run.source.source_kind == "ai_tools":
+                    self._apply_ai_tools_structured_response(run)
                 outcome = self._classify_completed_outcome(run.response_text or run.raw_response_text)
                 if outcome == RunStatus.NOT_FOUND:
                     run.mark_status(RunStatus.NOT_FOUND, summary="No @codex message found")
@@ -279,6 +451,14 @@ class CodexBridgeService:
                     run.mark_status(RunStatus.COMPLETED, summary=summary)
                     run.append_trace(kind="completed", label=summary)
                     self.notifier.run_completed("Run completed", summary)
+            elif status == "interrupted":
+                already_cancelled = run.status is RunStatus.CANCELLED
+                run.pending_request_id = None
+                run.approval_needed = False
+                run.mark_status(RunStatus.CANCELLED, summary=summary or "Interrupted")
+                run.append_trace(kind="cancelled", label=summary or "Interrupted")
+                if not already_cancelled:
+                    self.notifier.run_failed("Run aborted", summary or "Interrupted")
             else:
                 run.mark_status(RunStatus.FAILED, summary=summary)
                 run.append_trace(kind="failed", label=summary)
@@ -326,6 +506,82 @@ class CodexBridgeService:
         if "Stale @codex message found" in response_text:
             return RunStatus.STALE_SOURCE
         return None
+
+    def _apply_ai_tools_structured_response(self, run: RunRecord) -> None:
+        raw_text = (run.response_text or run.raw_response_text).strip()
+        if not raw_text:
+            return
+
+        try:
+            payload = self._parse_json_object(raw_text)
+        except ValueError:
+            run.render_kind = "single_text"
+            run.structured_output = {"text": raw_text}
+            run.primary_output = raw_text
+            run.selected_output_label = "Answer"
+            run.selected_output_text = raw_text
+            return
+
+        render_kind = str(payload.get("render_kind") or "single_text").strip()
+        structured = payload.get("structured_output")
+        if not isinstance(structured, dict):
+            structured = {}
+        primary = str(payload.get("primary_output") or "").strip()
+
+        if render_kind == "text_pair":
+            corrected = str(structured.get("corrected", "")).strip()
+            rewritten = str(structured.get("rewritten", "")).strip()
+            if not primary:
+                primary = rewritten or corrected
+            structured = {"corrected": corrected, "rewritten": rewritten}
+        elif render_kind == "alternatives":
+            alternatives = structured.get("alternatives")
+            if not isinstance(alternatives, list):
+                alternatives = []
+            normalized_alternatives: list[dict[str, str]] = []
+            for item in alternatives[:3]:
+                if isinstance(item, dict):
+                    value = str(item.get("value", "")).strip()
+                    explanation = str(item.get("explanation", "")).strip()
+                    if value:
+                        normalized_alternatives.append({"value": value, "explanation": explanation})
+            if not primary and normalized_alternatives:
+                primary = normalized_alternatives[0]["value"]
+            structured = {"alternatives": normalized_alternatives}
+        else:
+            render_kind = "single_text"
+            text = str(structured.get("text") or primary or raw_text).strip()
+            primary = primary or text
+            structured = {"text": text}
+
+        run.render_kind = render_kind
+        run.structured_output = structured
+        run.primary_output = primary or raw_text
+        run.response_text = run.primary_output
+        run.selected_output_label = self._default_output_label(run)
+        run.selected_output_text = run.primary_output
+        run.append_trace(kind="structured_output", label=f"Parsed AI Tools output: {render_kind}")
+
+    def _parse_json_object(self, text: str) -> dict[str, Any]:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                raise ValueError("No JSON object found") from exc
+            payload = json.loads(cleaned[start : end + 1])
+        if not isinstance(payload, dict):
+            raise ValueError("JSON response is not an object")
+        return payload
 
     def _trace_item_started(self, run: RunRecord, item: dict[str, Any]) -> None:
         item_type = item.get("type")

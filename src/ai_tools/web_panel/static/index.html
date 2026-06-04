@@ -15,61 +15,91 @@
           <p id="source-line" class="eyebrow">Waiting for a shortcut</p>
           <h1>Codex sidekick</h1>
         </div>
-        <span id="active-status" class="status-pill status-idle">Idle</span>
+        <div class="header-actions">
+          <span id="active-status" class="status-pill status-idle">Idle</span>
+          <button id="close-panel-btn" type="button" class="ghost-button">Hide</button>
+        </div>
       </header>
 
       <section id="run-summary" class="summary-card" aria-live="polite">
-        Waiting for a shortcut or task.
+        Ready.
       </section>
 
-      <section class="response-card" aria-label="Current response">
-        <div class="section-header">
-          <h2>Answer</h2>
-          <button id="refresh-btn" type="button" class="ghost-button">Refresh</button>
-        </div>
-        <button id="new-output-btn" type="button" class="new-output-button" hidden>New output</button>
-        <div id="response-view" class="response-text">No response yet.</div>
+      <nav class="mode-tabs" aria-label="Sidekick mode">
+        <button id="mode-rewrite-btn" type="button" class="mode-tab active" data-mode="rewrite">Rewrite</button>
+        <button id="mode-ask-btn" type="button" class="mode-tab" data-mode="ask">Ask</button>
+      </nav>
+
+      <section class="task-canvas" aria-label="Sidekick task">
+        <section id="rewrite-pane" class="mode-pane" aria-label="Rewrite selected text">
+          <div class="canvas-header">
+            <h2>Choose a version</h2>
+            <p id="rewrite-helper" class="helper-text">Select text in an app, run the shortcut, then choose the version to use.</p>
+          </div>
+          <div id="version-tabs" class="version-tabs" role="tablist" aria-label="Rewrite versions" hidden>
+            <button id="version-rewritten-btn" type="button" class="version-tab active" data-output-key="rewritten">Rewritten</button>
+            <button id="version-corrected-btn" type="button" class="version-tab" data-output-key="corrected">Corrected</button>
+          </div>
+          <textarea id="selected-output-textarea" class="output-editor" rows="7" spellcheck="true" placeholder="Output will appear here."></textarea>
+          <div class="canvas-actions">
+            <button id="use-output-btn" type="button">Use selected version</button>
+            <button id="copy-output-btn" type="button" class="ghost-button">Copy</button>
+          </div>
+        </section>
+
+        <section id="ask-pane" class="mode-pane" aria-label="Ask a question" hidden>
+          <div class="canvas-header">
+            <h2>Ask anything</h2>
+            <p class="helper-text">Ask a question without selecting text first.</p>
+          </div>
+          <textarea id="ask-input" class="output-editor" rows="4" spellcheck="true" placeholder="Type your question."></textarea>
+          <div class="canvas-actions">
+            <button id="ask-submit-btn" type="button">Ask</button>
+            <button id="ask-new-btn" type="button" class="ghost-button">New question</button>
+          </div>
+          <div id="ask-output-view" class="response-text">No answer yet.</div>
+        </section>
       </section>
 
-      <section class="progress-card" aria-label="Progress">
-        <h2>Progress</h2>
-        <ol id="phase-list" class="phase-list">
-          <li>No active invocation yet.</li>
-        </ol>
-      </section>
+      <section id="approval-box" class="approval-card" hidden></section>
 
-      <section id="approval-box" class="approval-card">No approval needed.</section>
+      <details class="details-drawer">
+        <summary>Details</summary>
+        <div class="details-stack">
+          <section class="progress-card" aria-label="Progress">
+            <div class="section-header">
+              <h2>Progress</h2>
+              <div class="header-actions">
+                <button id="abort-btn" type="button" class="danger-button" hidden>Abort</button>
+                <button id="refresh-btn" type="button" class="ghost-button">Refresh</button>
+              </div>
+            </div>
+            <ol id="phase-list" class="phase-list">
+              <li>No active invocation yet.</li>
+            </ol>
+          </section>
 
-      <section class="composer-card" aria-label="Sidekick composer">
-        <label id="composer-label" for="composer-input" data-steer-label="Steer this run">Start new task</label>
-        <textarea id="composer-input" rows="3" placeholder="Type a follow-up, steering note, or new task."></textarea>
-        <div class="composer-actions">
-          <button id="submit-composer-btn" type="button">Submit</button>
-          <button id="new-task-btn" type="button" class="ghost-button">New task</button>
-        </div>
-      </section>
-
-      <div class="debug-stack">
-        <details class="debug-drawer">
-          <summary>Prompt</summary>
+          <details class="debug-drawer">
+          <summary>Prompt sent</summary>
           <pre id="prompt-view" class="debug-text">No prompt yet.</pre>
-        </details>
+          </details>
 
-        <details class="debug-drawer">
-          <summary>Raw stream</summary>
+          <details class="debug-drawer">
+          <summary>Raw output</summary>
           <pre id="raw-stream-view" class="debug-text">No raw stream yet.</pre>
-        </details>
+          </details>
 
-        <details class="debug-drawer">
-          <summary>Tool calls</summary>
+          <details class="debug-drawer">
+          <summary>Tools</summary>
           <pre id="tool-log" class="debug-text">No tool calls yet.</pre>
-        </details>
+          </details>
 
-        <details class="debug-drawer">
-          <summary>Trace</summary>
+          <details class="debug-drawer">
+          <summary>Event trace</summary>
           <pre id="event-log" class="debug-text">No trace yet.</pre>
-        </details>
-      </div>
+          </details>
+        </div>
+      </details>
     </section>
   </main>
   <script src="/static/app.js?v=answer"></script>

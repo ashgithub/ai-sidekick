@@ -20,9 +20,9 @@ Hotkey-driven Slack-to-Codex workflow for turning Slack messages into Codex work
 
 The hotkey posts minimal resolver metadata to the local resident Codex bridge. Start the bridge first with `scripts/start_web_panel_daemon.sh`; Hammerspoon does not auto-start it. Hammerspoon checks `GET /readyz` before submitting work. If the local bridge is unavailable or not ready, Hammerspoon stops and shows the script path to run instead of falling back to Codex.app. It does not copy selected Slack text or read existing clipboard content. Hammerspoon shows `Checking Codex bridge...` while checking readiness and `Queued Codex task` when the local bridge accepts the request.
 
-Panel-open hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey only opens the local panel; it does not submit Slack work.
+Panel-toggle hotkey: `F5` by default. Configure this in `config/codex_web_panel.yaml` under `panel.open_hotkey`. This hotkey toggles the local panel; it does not submit Slack work.
 
-The panel is intentionally a compact native sidekick, not a dashboard or browser tab. It shows the current invocation, current outcome, progress phases, readable answer, steering/continue composer, and approvals. Prompt, raw stream, tool call, and trace details are available only in collapsed debug sections.
+The panel is intentionally a compact native sidekick, not a dashboard or browser tab. It has Rewrite and Ask modes, shows one main task canvas, and keeps progress, prompt, raw output, tools, and trace details behind a collapsed Details disclosure. Approvals appear only when a run needs them.
 
 ## Flow
 
@@ -50,11 +50,11 @@ The panel is intentionally a compact native sidekick, not a dashboard or browser
 
 The bridge keeps only the current invocation in memory. It does not persist run history, replay transcripts, or maintain a queue file. Restarting the daemon clears the visible run state.
 
-`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, function-key opener, Codex model/thread options, Slack prompt path, and stale-source threshold. The comments in that file document the current options.
+`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, native macOS notifications, function-key toggle, Codex model/thread options, reusable AI Tools thread reset limits, Slack prompt path, and stale-source threshold. The default `codex.cwd` is `~/tmp/codex_ai_tools`, which keeps sidekick-created Codex threads out of the current project directory. On startup, the bridge exposes this repo's editable `skills/` directory as `<codex.cwd>/skills`, so Codex can read `skills/.../SKILL.md` without broad filesystem searches. The comments in that file document the current options.
 
 Slack resolver stop conditions are surfaced as explicit run states. If no `@codex` message is found, the run becomes `not_found`. If the latest message is older than `slack.latest_message_max_age_minutes`, the run becomes `stale_source`.
 
-`scripts/start_web_panel_daemon.sh` starts the bridge and a hidden pywebview sidekick. Use `scripts/open_web_panel.sh` or the configured `F5` Hammerspoon hotkey to show/focus the current invocation. Use `scripts/start_web_panel_daemon.sh --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
+`scripts/start_web_panel_daemon.sh` starts the bridge and a hidden pywebview sidekick. Use `scripts/open_web_panel.sh` to show/focus the current invocation, or use the configured `F5` Hammerspoon hotkey to toggle it. Use `scripts/start_web_panel_daemon.sh --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
 
 If port `8765` is occupied by an older or unrelated process, `scripts/start_web_panel_daemon.sh` prints a port diagnostic and exits. Restart on the same default port with:
 
@@ -96,11 +96,13 @@ For visible UI testing while the daemon is running:
 ./scripts/open_web_panel.sh
 ```
 
-Press the configured panel-open function key, `F5` by default, to show the same native sidekick on demand. The composer steers an active run, continues a completed thread, or starts a new task when you choose `New task`.
+Press the configured panel-toggle function key, `F5` by default, to show or hide the same native sidekick on demand. The sidekick has Rewrite and Ask modes; Ask mode supports questions even when no text is selected.
+
+Use the `Abort` button to interrupt the current in-flight Codex turn. If Codex is waiting on an approval, Abort sends the approval `cancel` decision; otherwise it sends the app-server `turn/interrupt` request for the current `threadId` and `turnId`.
 
 To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Codex bridge is not running` and a `Start: .../scripts/start_web_panel_daemon.sh --restart` hint; it should not open Codex.app.
 
-Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, `ai_tools` text submissions through `/api/invoke`, and a zsh command-generation helper at `scripts/codex_nl_shell_sidekick.sh`.
+Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, structured `ai_tools` text submissions through `/api/ai-tools`, and a zsh command-generation helper at `scripts/codex_nl_shell_sidekick.sh`. The AI Text Tools Hammerspoon shortcut posts directly to `/api/ai-tools` and polls the accepted run for paste-back; it does not spawn the Python CLI on the hot path.
 
 ## Status Messages
 
