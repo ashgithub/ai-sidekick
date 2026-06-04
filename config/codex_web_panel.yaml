@@ -8,22 +8,44 @@ server:
 # Use "always" while debugging; switch to "attention" once stable.
 panel:
   visibility: always # always | attention | manual
+  # Opens/focuses the native sidekick. Used by auto-open paths.
   open_command: scripts/open_web_panel.sh
+  # Toggles the native sidekick. Used by the function-key shortcut.
+  toggle_command: scripts/toggle_web_panel.sh
   open_hotkey:
-    # Function-key shortcut to open the companion on demand.
+    # Function-key shortcut to toggle the companion on demand.
     # Plain F5 is easy to reach and unused by this repo's Hammerspoon bindings.
     # If browser refresh conflicts with your muscle memory, change to f6.
     mods: []
     key: f5
 
+# Native macOS notifications are optional; Hammerspoon alerts and the sidekick
+# still show local progress when this is false.
+notifications:
+  enabled: false
+
 # Settings passed to Codex app-server thread creation.
 # Use "inherit" to use ~/.codex/config.toml instead of forcing a POC-specific model.
+# AI Text Tools can reuse in-memory per-tool threads while the daemon is alive.
+# Restarting the daemon clears those reusable thread ids; no run history is kept.
 codex:
-  model: gpt-5.4-mini
+  model: inherit
   approval_policy: on-request
   approvals_reviewer: auto_review
   personality: pragmatic
-  cwd: .
+  # Codex threads for the sidekick start outside this repo by default.
+  # This keeps proofread/explain/tool-helper threads from appearing under
+  # the current project unless you intentionally point them there.
+  # On daemon startup, the bridge exposes this repo's editable skills at
+  # <cwd>/skills, so prompts can use paths like skills/proofread-slack/SKILL.md
+  # without searching /Users/ashish/work. By default this is a symlink to the
+  # repo's skills directory; replace it with a real directory if you want a
+  # private scratch copy that the bridge will not overwrite.
+  cwd: ~/tmp/codex_ai_tools
+  # Reusable AI Tools threads are reset after either limit to avoid stale
+  # accumulated context while keeping warm proofread/explain runs fast.
+  reusable_thread_max_turns: 20
+  reusable_thread_max_age_minutes: 60
 
 # Slack is the first source adapter; prompt body stays in Markdown for review.
 slack:

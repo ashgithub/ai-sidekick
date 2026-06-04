@@ -136,10 +136,12 @@ def test_hammerspoon_hotkey_requires_manually_started_bridge() -> None:
     assert "Queued Codex task" in lua
     assert "panel_visibility" in lua
     assert "open_panel" in lua
+    assert "toggle_panel" in lua
     assert "panel_open_hotkey_mods" in lua
     assert "panel_open_hotkey_key" in lua
     assert "hs.hotkey.bind(panel_open_hotkey_mods" in lua
     assert "scripts/start_web_panel_daemon.sh" in lua
+    assert "scripts/toggle_web_panel.sh" in lua
     assert "Codex shortcuts loaded" in lua
     assert "fallback config" in lua
     assert "Bridge starts manually" in lua
@@ -163,6 +165,7 @@ def test_manual_bridge_launcher_uses_yaml_config_and_open_panel_helper() -> None
     common_env = (ROOT / "scripts" / "common_env.sh").read_text(encoding="utf-8")
     launcher = (ROOT / "scripts" / "start_web_panel_daemon.sh").read_text(encoding="utf-8")
     opener = (ROOT / "scripts" / "open_web_panel.sh").read_text(encoding="utf-8")
+    toggler = (ROOT / "scripts" / "toggle_web_panel.sh").read_text(encoding="utf-8")
     config_helper = (ROOT / "scripts" / "codex_web_panel_config_json.sh").read_text(encoding="utf-8")
 
     assert "AI_TOOLS_WEB_PANEL_STATE_PATH" not in common_env
@@ -180,6 +183,9 @@ def test_manual_bridge_launcher_uses_yaml_config_and_open_panel_helper() -> None
     assert "Could not stop PID" in launcher
     assert "Leave this terminal open" in launcher
     assert "/api/panel/show" in opener
+    assert "/api/panel/toggle" not in opener
+    assert "/api/panel/toggle" in toggler
+    assert "/api/panel/show" not in toggler
     assert "/usr/bin/open" not in opener
     assert "--bridge-only" in launcher
     assert "ai_tools.codex_bridge.config" in config_helper

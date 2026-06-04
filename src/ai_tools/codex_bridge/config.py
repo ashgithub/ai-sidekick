@@ -23,15 +23,22 @@ class HotkeyConfig(BaseModel):
 class PanelConfig(BaseModel):
     visibility: Literal["always", "attention", "manual"] = "always"
     open_command: str = "scripts/open_web_panel.sh"
+    toggle_command: str = "scripts/toggle_web_panel.sh"
     open_hotkey: HotkeyConfig = Field(default_factory=HotkeyConfig)
 
 
+class NotificationsConfig(BaseModel):
+    enabled: bool = True
+
+
 class CodexConfig(BaseModel):
-    model: str = "gpt-5.4-mini"
+    model: str = "inherit"
     approval_policy: str = "on-request"
     approvals_reviewer: str = "auto_review"
     personality: str = "pragmatic"
-    cwd: str = "."
+    cwd: str = "~/tmp/codex_ai_tools"
+    reusable_thread_max_turns: int = 20
+    reusable_thread_max_age_minutes: int = 60
 
 
 class SlackConfig(BaseModel):
@@ -44,6 +51,7 @@ class SlackConfig(BaseModel):
 class WebPanelConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     panel: PanelConfig = Field(default_factory=PanelConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     codex: CodexConfig = Field(default_factory=CodexConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
 

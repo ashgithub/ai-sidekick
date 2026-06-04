@@ -25,7 +25,12 @@ local function load_config()
     config_load_failed = true
     return {
         server = { port = 8765 },
-        panel = { visibility = "manual", open_hotkey = { mods = {}, key = "f5" } },
+        panel = {
+            visibility = "manual",
+            open_command = "scripts/open_web_panel.sh",
+            toggle_command = "scripts/toggle_web_panel.sh",
+            open_hotkey = { mods = {}, key = "f5" },
+        },
     }
 end
 
@@ -33,7 +38,9 @@ local config = load_config()
 local panel_port = tostring((config.server and config.server.port) or "8765")
 local panel_visibility = (config.panel and config.panel.visibility) or "manual"
 local panel_open_command = (config.panel and config.panel.open_command) or "scripts/open_web_panel.sh"
+local panel_toggle_command = (config.panel and config.panel.toggle_command) or "scripts/toggle_web_panel.sh"
 local open_panel_script = repo_root .. "/" .. panel_open_command
+local toggle_panel_script = repo_root .. "/" .. panel_toggle_command
 local panel_open_hotkey = (config.panel and config.panel.open_hotkey) or {}
 local panel_open_hotkey_mods = panel_open_hotkey.mods or {}
 local panel_open_hotkey_key = panel_open_hotkey.key or "f5"
@@ -62,6 +69,25 @@ local function open_panel()
             "Check bridge or run: " .. open_panel_script,
         }, 5)
         log.e("Open panel task failed to start")
+    end
+end
+
+local function toggle_panel()
+    local task = hs.task.new(toggle_panel_script, function(exit_code, stdout, stderr)
+        if exit_code ~= 0 then
+            show_lines({
+                "Could not toggle Codex sidekick",
+                "Check bridge or run: " .. manual_daemon_script .. " --restart",
+            }, 5)
+            log.e("Toggle panel failed: " .. tostring(stderr or stdout or "unknown error"))
+        end
+    end)
+    if not task:start() then
+        show_lines({
+            "Could not toggle Codex sidekick",
+            "Check bridge or run: " .. manual_daemon_script .. " --restart",
+        }, 5)
+        log.e("Toggle panel task failed to start")
     end
 end
 
@@ -147,18 +173,18 @@ local function run_slack_codex_workflow()
 end
 
 hs.hotkey.bind(hotkey_mods, hotkey_key, run_slack_codex_workflow)
-hs.hotkey.bind(panel_open_hotkey_mods, panel_open_hotkey_key, open_panel)
+hs.hotkey.bind(panel_open_hotkey_mods, panel_open_hotkey_key, toggle_panel)
 if config_load_failed then
     show_lines({
         "Codex shortcuts loaded with fallback config",
-        "Slack: ctrl+alt+cmd+right | Panel: " .. string.upper(panel_open_hotkey_key),
+        "Slack: ctrl+alt+cmd+right | Toggle panel: " .. string.upper(panel_open_hotkey_key),
         "Bridge starts manually",
     }, 4)
 else
     show_lines({
         "Codex shortcuts loaded",
-        "Slack: ctrl+alt+cmd+right | Panel: " .. string.upper(panel_open_hotkey_key),
+        "Slack: ctrl+alt+cmd+right | Toggle panel: " .. string.upper(panel_open_hotkey_key),
         "Bridge starts manually",
     }, 4)
 end
-log.i("Loaded Codex shortcuts: slack=ctrl+alt+cmd+right panel=" .. panel_open_hotkey_key)
+log.i("Loaded Codex shortcuts: slack=ctrl+alt+cmd+right panel_toggle=" .. panel_open_hotkey_key)

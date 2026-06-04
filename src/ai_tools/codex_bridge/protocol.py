@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import deque
 import shutil
 import subprocess
 import threading
@@ -104,6 +105,8 @@ class CodexAppServerClient:
         self.protocol.on_notification = self._ignore_notification
         self.process: subprocess.Popen[str] | None = None
         self._reader_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self._stderr_lines: deque[str] = deque(maxlen=200)
         self._write_lock = threading.Lock()
 
     def _ignore_notification(self, payload: dict[str, Any]) -> None:
@@ -129,6 +132,8 @@ class CodexAppServerClient:
         )
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
+        self._stderr_thread = threading.Thread(target=self._read_stderr_loop, daemon=True)
+        self._stderr_thread.start()
         self._write_line(self.protocol.build_initialize_request())
         self.protocol.wait_for_response(self.protocol.peek_last_request_id(), timeout=10)
         self._write_line(self.protocol.build_initialized_notification())
@@ -149,6 +154,12 @@ class CodexAppServerClient:
 
     def turn_steer(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._request("turn/steer", params)
+
+    def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._request("turn/interrupt", params)
+
+    def recent_stderr(self) -> list[str]:
+        return list(self._stderr_lines)
 
     def reply_to_server_request(self, request_id: str, payload: object) -> None:
         self._write_line(self.protocol.build_response(request_id, payload if isinstance(payload, dict) else {}))
@@ -174,3 +185,11 @@ class CodexAppServerClient:
             stripped = line.strip()
             if stripped:
                 self.protocol.handle_incoming_line(stripped)
+
+    def _read_stderr_loop(self) -> None:
+        if self.process is None or self.process.stderr is None:
+            return
+        for line in self.process.stderr:
+            stripped = line.strip()
+            if stripped:
+                self._stderr_lines.append(stripped)

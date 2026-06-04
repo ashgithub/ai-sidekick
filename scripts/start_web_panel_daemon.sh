@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: ./scripts/start_web_panel_daemon.sh [--restart] [--bridge-only] [--config PATH] [--panel-visibility always|attention|manual]"
       echo
       echo "Starts the local Codex sidekick using config/codex_web_panel.yaml by default."
-      echo "The default process creates a hidden pywebview sidekick that F5 can show."
+      echo "The default process creates a hidden pywebview sidekick that F5 can toggle."
       echo "--bridge-only starts HTTP ingress without a native sidekick window."
       echo "--restart kills the current listener on that port before starting."
       exit 0
@@ -102,6 +102,7 @@ if READY_BODY="$(/usr/bin/curl --silent --show-error --fail "${READY_URL}" 2>/de
   echo "${READY_BODY}"
   echo "Panel URL: ${BASE_URL}/"
   echo "Open panel: ./scripts/open_web_panel.sh"
+  echo "Toggle panel: ./scripts/toggle_web_panel.sh"
   exit 0
 fi
 
@@ -116,6 +117,7 @@ echo "Starting AI Tools Codex bridge on http://127.0.0.1:${PORT}"
 echo "Config: ${CONFIG_PATH}"
 echo "Panel URL: ${BASE_URL}/"
 echo "Open panel: ./scripts/open_web_panel.sh"
+echo "Toggle panel: ./scripts/toggle_web_panel.sh"
 echo "Leave this terminal open. Press Ctrl-C to stop."
 
 if [[ -n "${PANEL_VISIBILITY}" ]]; then

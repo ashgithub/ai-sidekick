@@ -17,6 +17,21 @@ def test_schema_from_app_context_fallback():
     assert resolve_schema_family(req) == "text_pair"
 
 
+def test_schema_from_ghostty_app_context_matches_terminal_routing():
+    req = AgentRequest(input_text="list large files", ui_tab="universal", app_context="Ghostty", options={})
+    assert resolve_schema_family(req) == "alternatives"
+
+
+def test_explicit_explain_nudge_wins_in_ghostty_context():
+    req = AgentRequest(
+        input_text="explain this shell error",
+        ui_tab="universal",
+        app_context="Ghostty",
+        options={"nudge": "explain"},
+    )
+    assert resolve_schema_family(req) == "single_text"
+
+
 def test_refresh_action_schema():
     req = AgentRequest(input_text="", ui_tab="universal", options={"action": "refresh_models"})
     assert resolve_schema_family(req) == "refresh"

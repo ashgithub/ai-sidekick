@@ -29,6 +29,7 @@ SLACK_APPS = {
 COMMAND_APPS = {
     "terminal",
     "iterm2",
+    "ghostty",
     "alacritty",
     "hyper",
     "warp",

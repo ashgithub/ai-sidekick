@@ -22,6 +22,7 @@ class RunStatus(str, Enum):
     NOT_FOUND = "not_found"
     STALE_SOURCE = "stale_source"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -62,6 +63,11 @@ class RunRecord(BaseModel):
     last_summary: str = ""
     response_text: str = ""
     raw_response_text: str = ""
+    render_kind: str = "single_text"
+    structured_output: dict[str, Any] | None = None
+    primary_output: str = ""
+    selected_output_label: str = ""
+    selected_output_text: str = ""
     transcript: list[TranscriptEntry] = Field(default_factory=list)
     trace: list[TraceEntry] = Field(default_factory=list)
 
