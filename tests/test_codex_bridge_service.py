@@ -193,10 +193,10 @@ def test_select_run_output_can_apply_user_edited_text() -> None:
     run.response_text = "Rewritten text"
     service.store.upsert(run)
 
-    updated = service.select_run_output(run.run_id, output_key="rewritten", selected_text="Edited Slack text")
+    updated = service.select_run_output(run.run_id, output_key="rewritten", selected_text="  Edited Slack text\n")
 
-    assert updated.primary_output == "Edited Slack text"
-    assert updated.response_text == "Edited Slack text"
+    assert updated.primary_output == "  Edited Slack text\n"
+    assert updated.response_text == "  Edited Slack text\n"
     assert updated.selected_output_label == "Rewritten"
     assert updated.trace[-1].kind == "output_selected"
 

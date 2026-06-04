@@ -415,7 +415,7 @@ def test_ingress_server_exposes_run_output_selection_action() -> None:
         response = request.urlopen(
             request.Request(
                 f"http://127.0.0.1:{server.port}/api/runs/run-123/select-output",
-                data=json.dumps({"output_key": "alternative:1", "text": "edited command"}).encode("utf-8"),
+                data=json.dumps({"output_key": "alternative:1", "text": "  edited command\n"}).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             ),
@@ -426,10 +426,10 @@ def test_ingress_server_exposes_run_output_selection_action() -> None:
 
     assert json.loads(response.read().decode("utf-8")) == {
         "run_id": "run-123",
-        "primary_output": "edited command",
+        "primary_output": "  edited command\n",
         "selected_output_label": "Alternative 2",
     }
-    assert service.select_calls == [("run-123", "alternative:1", "edited command")]
+    assert service.select_calls == [("run-123", "alternative:1", "  edited command\n")]
 
 
 def test_static_assets_are_not_cached_between_sidekick_restarts(tmp_path: Path) -> None:

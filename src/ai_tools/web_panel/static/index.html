@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Tools Codex Sidekick</title>
+  <link rel="icon" type="image/png" href="/static/assets/codex-sidekick-icon.png">
+  <link rel="apple-touch-icon" href="/static/assets/codex-sidekick-icon.png">
   <link rel="stylesheet" href="/static/assets/fonts/fonts.css?v=answer">
   <link rel="stylesheet" href="/static/styles.css?v=answer">
 </head>
@@ -11,9 +13,12 @@
   <main class="sidekick-shell" aria-label="Codex sidekick">
     <section class="sidekick-panel">
       <header class="sidekick-header">
-        <div>
-          <p id="source-line" class="eyebrow">Waiting for a shortcut</p>
-          <h1>Codex sidekick</h1>
+        <div class="brand-lockup">
+          <img class="brand-icon" src="/static/assets/codex-sidekick-icon.png" alt="" aria-hidden="true">
+          <div>
+            <p id="source-line" class="eyebrow">Waiting for a shortcut</p>
+            <h1>Codex sidekick</h1>
+          </div>
         </div>
         <div class="header-actions">
           <span id="active-status" class="status-pill status-idle">Idle</span>
@@ -42,9 +47,18 @@
           </div>
           <textarea id="selected-output-textarea" class="output-editor" rows="7" spellcheck="true" placeholder="Output will appear here."></textarea>
           <div class="canvas-actions">
-            <button id="use-output-btn" type="button">Use selected version</button>
-            <button id="copy-output-btn" type="button" class="ghost-button">Copy</button>
+            <span id="rewrite-feedback" class="action-feedback" aria-live="polite"></span>
+            <button id="use-output-btn" type="button">Apply to source</button>
+            <button id="copy-output-btn" type="button" class="ghost-button">Copy text</button>
           </div>
+          <details id="refine-drawer" class="refine-drawer" hidden>
+            <summary>Refine this</summary>
+            <textarea id="refine-input" class="refine-input" rows="3" spellcheck="true" placeholder="Tell Codex what to change."></textarea>
+            <div class="canvas-actions">
+              <span id="refine-feedback" class="action-feedback" aria-live="polite"></span>
+              <button id="refine-submit-btn" type="button">Revise draft</button>
+            </div>
+          </details>
         </section>
 
         <section id="ask-pane" class="mode-pane" aria-label="Ask a question" hidden>

@@ -448,7 +448,7 @@ local function wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appNa
         end
 
         if run_status == "completed" and poll_attempt == 1 then
-            show_status("queued", appName, "Review in sidekick, edit if needed, then Use selected version.")
+            show_status("queued", appName, "Review in sidekick, edit if needed, then Apply to source.")
         end
         hs.timer.doAfter(0.5, function()
             wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appName, config, originalClipboard, poll_attempt + 1)

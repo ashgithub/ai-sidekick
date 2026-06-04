@@ -227,9 +227,8 @@ class CodexBridgeService:
         run = self._require_run(run_id)
         label, text = self._resolve_output_selection(run, output_key)
         if selected_text is not None:
-            edited = selected_text.strip()
-            if edited:
-                text = edited
+            if selected_text.strip():
+                text = selected_text
         run.primary_output = text
         run.response_text = text
         run.selected_output_label = label

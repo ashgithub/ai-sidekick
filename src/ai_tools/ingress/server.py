@@ -255,10 +255,11 @@ class LocalIngressServer:
                     return
                 if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/select-output"):
                     run_id = parsed.path.split("/")[3]
+                    selected_text = str(body.get("text", "")) if "text" in body else None
                     run = outer.service.select_run_output(
                         run_id,
                         output_key=str(body.get("output_key", "")).strip(),
-                        selected_text=str(body.get("text", "")).strip() or None,
+                        selected_text=selected_text,
                     )
                     self._write_json(
                         HTTPStatus.OK,

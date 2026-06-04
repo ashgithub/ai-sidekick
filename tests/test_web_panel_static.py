@@ -13,6 +13,8 @@ def test_web_panel_is_compact_sidekick_not_dashboard() -> None:
 
     assert "sidekick-shell" in html
     assert "sidekick-panel" in html
+    assert "brand-lockup" in html
+    assert "brand-icon" in html
     assert "mode-tabs" in html
     assert "task-canvas" in html
     assert "details-drawer" in html
@@ -37,6 +39,7 @@ def test_web_panel_uses_redwood_tokens_and_wraps_text() -> None:
     html = read_static("index.html")
 
     assert "/static/assets/fonts/fonts.css" in html
+    assert "/static/assets/codex-sidekick-icon.png" in html
     assert "--rds-page-background-neutral30: #F1EFED" in css
     assert "--rds-surface-neutral10: #FBF9F8" in css
     assert "--rds-text-primary: #161513" in css
@@ -44,16 +47,18 @@ def test_web_panel_uses_redwood_tokens_and_wraps_text() -> None:
     assert '--rds-font-family-primary: "Oracle Sans", "Segoe UI", Arial, sans-serif' in css
     assert "white-space: pre-wrap" in css
     assert "overflow-wrap: anywhere" in css
-    assert "max-width: 560px" in css
+    assert "max-width: 592px" in css
 
 
 def test_web_panel_uses_compact_sidekick_spacing() -> None:
     css = read_static("styles.css")
 
-    assert "width: min(calc(100vw - 16px), 560px)" in css
-    assert "max-width: 560px" in css
-    assert ".sidekick-shell {\n  display: grid;\n  justify-content: end;\n  min-height: 100vh;\n  padding: var(--rds-space-sm);" in css
+    assert "width: min(100vw, 592px)" in css
+    assert "max-width: 592px" in css
+    assert "min-height: 100vh" in css
+    assert ".sidekick-shell {\n  display: grid;\n  justify-content: center;\n  min-height: 100vh;\n  padding: 0;" in css
     assert ".sidekick-panel {\n  display: grid;\n  align-self: start;\n  gap: var(--rds-space-sm);" in css
+    assert "box-shadow: none" in css
     assert "max-height: 52vh" in css
 
 
@@ -81,6 +86,8 @@ def test_web_panel_js_reads_current_run_and_maps_attention_states() -> None:
     assert "No @codex message found" in js
     assert "Stale @codex message" in js
     assert "renderPhaseList" in js
+    assert "refinementPrompt" in js
+    assert 'intent: "auto"' in js
 
 
 def test_web_panel_reconnects_event_stream_instead_of_going_stale() -> None:
@@ -98,8 +105,17 @@ def test_web_panel_renders_structured_ai_tools_outputs() -> None:
 
     assert "version-tabs" in html
     assert "selected-output-textarea" in html
+    assert "rewrite-feedback" in html
     assert "selectOutput" in js
-    assert "Use selected version" in html
+    assert "Apply to source" in html
+    assert "Copy text" in html
+    assert "Copied to clipboard." in js
+    assert "Applied edited text." in js
+    assert "Refine this" in html
+    assert "Revise draft" in html
+    assert "Tell Codex what to change." in html
+    assert "Revision requested." in js
+    assert "Current draft:" in js
     assert "selectedOutputKey" in js
     assert "renderVersionTabs" in js
     assert "Corrected" in html

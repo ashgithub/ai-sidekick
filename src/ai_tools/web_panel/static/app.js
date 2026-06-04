@@ -20,6 +20,11 @@ const versionCorrectedBtn = document.getElementById("version-corrected-btn");
 const selectedOutputTextareaEl = document.getElementById("selected-output-textarea");
 const useOutputBtn = document.getElementById("use-output-btn");
 const copyOutputBtn = document.getElementById("copy-output-btn");
+const rewriteFeedbackEl = document.getElementById("rewrite-feedback");
+const refineDrawerEl = document.getElementById("refine-drawer");
+const refineInputEl = document.getElementById("refine-input");
+const refineSubmitBtn = document.getElementById("refine-submit-btn");
+const refineFeedbackEl = document.getElementById("refine-feedback");
 const askInputEl = document.getElementById("ask-input");
 const askSubmitBtn = document.getElementById("ask-submit-btn");
 const askNewBtn = document.getElementById("ask-new-btn");
@@ -36,6 +41,11 @@ let selectedOutputDirty = false;
 let selectedOutputRunId = null;
 let outputSelecting = false;
 let askSubmitting = false;
+let copyFeedbackTimer = null;
+let applyFeedbackTimer = null;
+let feedbackToken = 0;
+let refineSubmitting = false;
+let refineFeedbackTimer = null;
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -235,11 +245,11 @@ function renderReadableText(container, text, placeholder) {
 
 async function copyText(text) {
   if (!text) {
-    return;
+    return false;
   }
   if (navigator.clipboard && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(text);
-    return;
+    return true;
   }
   const scratch = document.createElement("textarea");
   scratch.value = text;
@@ -250,6 +260,40 @@ async function copyText(text) {
   scratch.select();
   document.execCommand("copy");
   document.body.removeChild(scratch);
+  return true;
+}
+
+function setTemporaryFeedback(message, button, label, timerKey) {
+  feedbackToken += 1;
+  const token = feedbackToken;
+  rewriteFeedbackEl.textContent = message;
+  button.textContent = label;
+  button.classList.add("success-state");
+  if (timerKey === "copy" && copyFeedbackTimer) {
+    clearTimeout(copyFeedbackTimer);
+  }
+  if (timerKey === "apply" && applyFeedbackTimer) {
+    clearTimeout(applyFeedbackTimer);
+  }
+  const timer = setTimeout(() => {
+    if (token === feedbackToken) {
+      rewriteFeedbackEl.textContent = "";
+    }
+    button.classList.remove("success-state");
+    button.textContent = timerKey === "copy" ? "Copy text" : "Apply to source";
+  }, 1600);
+  if (timerKey === "copy") {
+    copyFeedbackTimer = timer;
+  } else {
+    applyFeedbackTimer = timer;
+  }
+}
+
+async function copySelectedOutput() {
+  const copied = await copyText(selectedOutputTextareaEl.value);
+  if (copied) {
+    setTemporaryFeedback("Copied to clipboard.", copyOutputBtn, "Copied", "copy");
+  }
 }
 
 function selectedLabelForRun(run) {
@@ -275,6 +319,10 @@ function outputText(run, key) {
 
 function canSelectOutput(run) {
   return run && run.source && run.source.source_kind === "ai_tools" && run.status === "completed";
+}
+
+function canRefineRun(run) {
+  return run && run.thread_id && run.source && run.source.source_kind === "ai_tools";
 }
 
 function renderVersionTabs(run) {
@@ -306,6 +354,8 @@ function renderRewritePane() {
   const canUse = canSelectOutput(run) && selectedOutputTextareaEl.value.trim() !== "";
   useOutputBtn.disabled = !canUse || outputSelecting;
   copyOutputBtn.disabled = selectedOutputTextareaEl.value.trim() === "" || outputSelecting;
+  refineDrawerEl.hidden = !canRefineRun(run);
+  refineSubmitBtn.disabled = refineSubmitting || !refineInputEl.value.trim();
   if (!run) {
     rewriteHelperEl.textContent = "Select text in an app, run the shortcut, then choose the version to use.";
     selectedOutputTextareaEl.placeholder = "Output will appear here.";
@@ -317,8 +367,67 @@ function renderRewritePane() {
     return;
   }
   rewriteHelperEl.textContent = run.render_kind === "text_pair"
-    ? "Switch between versions, edit if needed, then use the selected version."
-    : "Review the output, edit if needed, then use it.";
+    ? "Switch versions, edit the text, then apply it back to the source app."
+    : "Review the output, edit if needed, then apply it back to the source app.";
+}
+
+function refinementPrompt(feedback, draft) {
+  return [
+    "Revise the current draft using the feedback below.",
+    "Keep the same output format as the current sidekick run.",
+    "",
+    "Feedback:",
+    feedback,
+    "",
+    "Current draft:",
+    draft || "(No draft text yet.)",
+  ].join("\n");
+}
+
+function setRefineFeedback(message) {
+  refineFeedbackEl.textContent = message;
+  refineSubmitBtn.textContent = "Sent";
+  refineSubmitBtn.classList.add("success-state");
+  if (refineFeedbackTimer) {
+    clearTimeout(refineFeedbackTimer);
+  }
+  refineFeedbackTimer = setTimeout(() => {
+    refineFeedbackEl.textContent = "";
+    refineSubmitBtn.textContent = "Revise draft";
+    refineSubmitBtn.classList.remove("success-state");
+  }, 1600);
+}
+
+async function submitRefinement() {
+  if (!canRefineRun(currentRun) || refineSubmitting) {
+    return;
+  }
+  const feedback = refineInputEl.value.trim();
+  if (!feedback) {
+    return;
+  }
+  refineSubmitting = true;
+  refineSubmitBtn.disabled = true;
+  try {
+    await fetchJson("/api/invoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_kind: "manual",
+        source_label: "Refine",
+        source_id: `refine-${Date.now()}`,
+        prompt: refinementPrompt(feedback, selectedOutputTextareaEl.value),
+        intent: "auto",
+      }),
+    });
+    refineInputEl.value = "";
+    selectedOutputDirty = false;
+    setRefineFeedback("Revision requested.");
+    await refreshRuns();
+  } finally {
+    refineSubmitting = false;
+    renderRewritePane();
+  }
 }
 
 function renderAskPane() {
@@ -339,8 +448,8 @@ async function selectOutput() {
   if (!canSelectOutput(currentRun) || outputSelecting) {
     return;
   }
-  const text = selectedOutputTextareaEl.value.trim();
-  if (!text) {
+  const text = selectedOutputTextareaEl.value;
+  if (!text.trim()) {
     return;
   }
   outputSelecting = true;
@@ -352,6 +461,7 @@ async function selectOutput() {
       body: JSON.stringify({ output_key: selectedOutputKey, text }),
     });
     await copyText(text);
+    setTemporaryFeedback("Applied edited text.", useOutputBtn, "Applied", "apply");
     selectedOutputDirty = false;
     await refreshRuns();
   } finally {
@@ -634,11 +744,13 @@ selectedOutputTextareaEl.addEventListener("input", () => {
   selectedOutputDirty = true;
   renderRewritePane();
 });
+refineInputEl.addEventListener("input", renderRewritePane);
 refreshBtn.addEventListener("click", refreshRuns);
 closePanelBtn.addEventListener("click", () => closePanel().catch((error) => console.error(error)));
 abortBtn.addEventListener("click", () => abortRun(currentRun && currentRun.run_id));
 useOutputBtn.addEventListener("click", () => selectOutput().catch((error) => console.error(error)));
-copyOutputBtn.addEventListener("click", () => copyText(selectedOutputTextareaEl.value).catch((error) => console.error(error)));
+copyOutputBtn.addEventListener("click", () => copySelectedOutput().catch((error) => console.error(error)));
+refineSubmitBtn.addEventListener("click", () => submitRefinement().catch((error) => console.error(error)));
 askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => console.error(error)));
 askNewBtn.addEventListener("click", () => {
   askInputEl.value = "";

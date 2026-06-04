@@ -3,8 +3,20 @@ from pathlib import Path
 import pytest
 
 from ai_tools.codex_bridge.config import WebPanelConfig
-from ai_tools.web_panel.app import apply_panel_visibility_override, build_service, keep_bridge_alive_after_window_exit
+from ai_tools.web_panel.app import (
+    PANEL_APP_NAME,
+    PANEL_ICON_PATH,
+    PANEL_WINDOW_HEIGHT,
+    PANEL_WINDOW_MIN_HEIGHT,
+    PANEL_WINDOW_MIN_WIDTH,
+    PANEL_WINDOW_WIDTH,
+    apply_macos_app_identity,
+    apply_panel_visibility_override,
+    build_service,
+    keep_bridge_alive_after_window_exit,
+)
 from ai_tools.web_panel.window import PanelWindowController
+from ai_tools.web_panel.window import activate_macos_app
 
 
 def test_build_service_uses_codex_config_for_thread_options(tmp_path: Path) -> None:
@@ -95,6 +107,26 @@ def test_panel_visibility_override_rejects_unknown_values() -> None:
 
     with pytest.raises(SystemExit, match="Invalid panel visibility"):
         apply_panel_visibility_override(config, "sometimes")
+
+
+def test_native_window_dimensions_match_sidekick_surface() -> None:
+    assert PANEL_WINDOW_WIDTH == 592
+    assert PANEL_WINDOW_HEIGHT == 760
+    assert PANEL_WINDOW_MIN_WIDTH == 592
+    assert PANEL_WINDOW_MIN_HEIGHT == 560
+
+
+def test_native_window_uses_codex_sidekick_identity(tmp_path: Path) -> None:
+    assert PANEL_APP_NAME == "Codex Sidekick"
+    assert PANEL_ICON_PATH.name == "codex-sidekick-icon.png"
+    assert PANEL_ICON_PATH.exists()
+    assert apply_macos_app_identity(icon_path=tmp_path / "missing.png") is False
+
+
+def test_macos_activation_helper_is_safe_off_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ai_tools.web_panel.window.sys.platform", "linux")
+
+    assert activate_macos_app() is False
 
 
 class FakeEvent:

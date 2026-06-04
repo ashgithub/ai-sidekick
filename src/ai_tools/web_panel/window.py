@@ -3,8 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import sys
 import threading
 from typing import Any
+
+
+def activate_macos_app() -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        from AppKit import NSApplication
+    except Exception:
+        return False
+    app = NSApplication.sharedApplication()
+    try:
+        app.activateIgnoringOtherApps_(True)
+    except Exception:
+        return False
+    return True
 
 
 @dataclass
@@ -31,6 +47,7 @@ class PanelWindowController:
         self.visible = True
         if self.window is not None and hasattr(self.window, "show"):
             self.window.show()
+        activate_macos_app()
         return {"visible": self.visible, "panel_mode": self.panel_mode}
 
     def hide(self) -> dict[str, object]:
