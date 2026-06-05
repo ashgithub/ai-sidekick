@@ -144,6 +144,9 @@ def main() -> int:
         slack_prompt_file=config.slack.prompt_file,
         slack_latest_message_max_age_minutes=config.slack.latest_message_max_age_minutes,
         panel_visibility=config.panel.visibility,
+        shortcut_profiles=config.shortcuts.profiles,
+        shortcut_pending_retry_after_ms=config.shortcuts.pending_retry_after_ms,
+        shortcut_review_retry_after_ms=config.shortcuts.review_retry_after_ms,
     )
     server.start()
 

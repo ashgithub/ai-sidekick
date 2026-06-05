@@ -7,9 +7,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+from ai_tools.codex_bridge.config import ShortcutProfileConfig, default_shortcut_profiles
 from ai_tools.codex_bridge.models import SourceMetadata
+from ai_tools.codex_bridge.models import RunStatus
 
 from .client import build_ai_tools_prompt
 from .manual import manual_source_metadata
@@ -39,6 +41,9 @@ class LocalIngressServer:
         slack_prompt_file: Path | None = None,
         slack_latest_message_max_age_minutes: int = 30,
         panel_visibility: str = "manual",
+        shortcut_profiles: list[ShortcutProfileConfig] | None = None,
+        shortcut_pending_retry_after_ms: int = 200,
+        shortcut_review_retry_after_ms: int = 500,
     ) -> None:
         self.service = service
         self.host = host
@@ -47,6 +52,9 @@ class LocalIngressServer:
         self.slack_prompt_file = slack_prompt_file
         self.slack_latest_message_max_age_minutes = slack_latest_message_max_age_minutes
         self.panel_visibility = panel_visibility
+        self.shortcut_profiles = shortcut_profiles or default_shortcut_profiles()
+        self.shortcut_pending_retry_after_ms = shortcut_pending_retry_after_ms
+        self.shortcut_review_retry_after_ms = shortcut_review_retry_after_ms
         self._server: ThreadingHTTPServer | None = None
         self._thread = None
 
@@ -108,6 +116,16 @@ class LocalIngressServer:
                     return
                 if parsed.path == "/api/events":
                     self._write_event_stream()
+                    return
+                if parsed.path.startswith("/api/shortcut/results/"):
+                    run_id = parsed.path.removeprefix("/api/shortcut/results/")
+                    query = parse_qs(parsed.query)
+                    client_action = str((query.get("client_action") or [""])[0])
+                    run = outer.service.get_run(run_id)
+                    if run is None:
+                        self._write_json(HTTPStatus.NOT_FOUND, {"state": "failed", "message": "run not found"})
+                        return
+                    self._write_json(HTTPStatus.OK, outer._shortcut_result_payload(run, client_action=client_action))
                     return
                 if parsed.path.startswith("/api/runs/"):
                     run_id = parsed.path.removeprefix("/api/runs/")
@@ -222,6 +240,69 @@ class LocalIngressServer:
                     self._write_json(
                         HTTPStatus.OK,
                         {"run_id": run.run_id, "status": "accepted", "panel_visibility": outer.panel_visibility},
+                    )
+                    return
+                if parsed.path == "/api/shortcut":
+                    try:
+                        app = str(body.get("app", "")).strip()
+                        text = str(body.get("text", "")).strip()
+                        interaction = str(body.get("interaction", "replace-selection")).strip() or "replace-selection"
+                        if not text:
+                            outer.service.show_panel(mode="ask")
+                            self._write_json(
+                                HTTPStatus.OK,
+                                {
+                                    "status": "accepted",
+                                    "client_action": "show_sidekick",
+                                    "panel_visibility": outer.panel_visibility,
+                                },
+                            )
+                            return
+                        profile = outer._resolve_shortcut_profile(app)
+                        app_context = profile.app_context or app or None
+                        source_label = app or app_context or "AI Tools"
+                        source = SourceMetadata(
+                            source_kind="ai_tools",
+                            source_label=source_label,
+                            source_id=outer._shortcut_source_id(app=app, interaction=interaction),
+                        )
+                        prompt = build_ai_tools_prompt(
+                            text=text,
+                            app_context=app_context,
+                            nudge=profile.nudge,
+                        )
+                        run = outer.service.submit_or_route(
+                            source=source,
+                            prompt=prompt,
+                            intent=profile.intent,
+                            thread_key=outer._ai_tools_thread_key(
+                                source=source,
+                                app_context=app_context,
+                                nudge=profile.nudge,
+                                profile_name=profile.name,
+                            ),
+                        )
+                        if profile.show_panel:
+                            outer.service.show_panel(mode=profile.panel_mode)
+                    except Exception as exc:  # noqa: BLE001
+                        self._write_json(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            {
+                                "error": "submit_failed",
+                                "message": str(exc),
+                                "detail": type(exc).__name__,
+                            },
+                        )
+                        return
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {
+                            "run_id": run.run_id,
+                            "status": "accepted",
+                            "client_action": profile.client_action,
+                            "poll_url": f"/api/shortcut/results/{run.run_id}",
+                            "panel_visibility": outer.panel_visibility,
+                        },
                     )
                     return
                 if parsed.path == "/api/panel/show":
@@ -352,9 +433,56 @@ class LocalIngressServer:
         source: SourceMetadata,
         app_context: str | None,
         nudge: str | None,
+        profile_name: str | None = None,
     ) -> str:
-        profile = (nudge or app_context or source.source_label or "default").strip().lower()
+        profile = (profile_name or nudge or app_context or source.source_label or "default").strip().lower()
         app = (app_context or source.source_label or "default").strip().lower()
         safe_profile = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in profile)
         safe_app = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in app)
         return f"ai_tools:{safe_profile}:{safe_app}"
+
+    def _resolve_shortcut_profile(self, app: str) -> ShortcutProfileConfig:
+        normalized_app = app.strip().lower()
+        fallback = self.shortcut_profiles[-1] if self.shortcut_profiles else default_shortcut_profiles()[-1]
+        for profile in self.shortcut_profiles:
+            patterns = profile.app_patterns or []
+            for pattern in patterns:
+                normalized_pattern = pattern.strip().lower()
+                if normalized_pattern == "*":
+                    fallback = profile
+                    continue
+                if normalized_pattern and normalized_pattern in normalized_app:
+                    return profile
+        return fallback
+
+    def _shortcut_source_id(self, *, app: str, interaction: str) -> str:
+        import time
+
+        safe_app = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in (app or "app").lower())
+        safe_interaction = "".join(
+            char if char.isalnum() or char in {"-", "_"} else "-" for char in (interaction or "shortcut").lower()
+        )
+        return f"ai-tools-{safe_app}-{safe_interaction}-{int(time.time())}"
+
+    def _shortcut_result_payload(self, run: Any, *, client_action: str = "") -> dict[str, Any]:
+        if run.status in {RunStatus.QUEUED, RunStatus.STARTING, RunStatus.RUNNING, RunStatus.APPROVAL_NEEDED}:
+            return {"state": "pending", "retry_after_ms": self.shortcut_pending_retry_after_ms}
+
+        if run.status is RunStatus.COMPLETED:
+            if client_action == "wait_for_sidekick" and not self._run_has_output_selected(run):
+                return {
+                    "state": "review_pending",
+                    "retry_after_ms": self.shortcut_review_retry_after_ms,
+                    "message": "Review in sidekick, then Apply to source.",
+                }
+            output = str(getattr(run, "primary_output", "") or getattr(run, "response_text", ""))
+            if output:
+                return {"state": "ready", "output": output}
+            return {"state": "failed", "message": "No output returned."}
+
+        summary = str(getattr(run, "last_summary", "") or f"Sidekick finished with status: {run.status.value}")
+        return {"state": "failed", "message": summary}
+
+    def _run_has_output_selected(self, run: Any) -> bool:
+        trace = getattr(run, "trace", []) or []
+        return any(getattr(entry, "kind", "") == "output_selected" for entry in trace)

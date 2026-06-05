@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from urllib import request
 
-from ai_tools.codex_bridge.models import RunRecord, SourceMetadata
+from ai_tools.codex_bridge.models import RunRecord, RunStatus, SourceMetadata
 from ai_tools.ingress.server import LocalIngressServer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +84,11 @@ class StubService:
 
     def current_run(self):
         return self.current_run_record
+
+    def get_run(self, run_id: str):
+        if self.current_run_record and self.current_run_record.run_id == run_id:
+            return self.current_run_record
+        return None
 
     def readiness(self):
         if self.ready:
@@ -350,6 +355,177 @@ def test_ingress_server_accepts_structured_ai_tools_invocations() -> None:
     assert "pls fix this" in prompt
     assert "Return JSON only" in prompt
     assert service.thread_keys == ["ai_tools:slack:slack"]
+
+
+def test_shortcut_endpoint_resolves_slack_profile_to_sidekick_review_action() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Slack",
+                        "text": "pls fix this",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-routed",
+        "status": "accepted",
+        "client_action": "wait_for_sidekick",
+        "poll_url": "/api/shortcut/results/run-routed",
+        "panel_visibility": "manual",
+    }
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_kind == "ai_tools"
+    assert source.source_label == "Slack"
+    assert intent == "reuse"
+    assert "App context: Slack" in prompt
+    assert "Nudge: slack" in prompt
+    assert service.thread_keys == ["ai_tools:slack:slack"]
+    assert service.panel_actions == ["show"]
+
+
+def test_shortcut_endpoint_resolves_terminal_profile_to_explain_poll_action() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Ghostty",
+                        "text": "explain this error",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-routed",
+        "status": "accepted",
+        "client_action": "poll_and_replace",
+        "poll_url": "/api/shortcut/results/run-routed",
+        "panel_visibility": "manual",
+    }
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_label == "Ghostty"
+    assert intent == "reuse"
+    assert "App context: Ghostty" in prompt
+    assert "Nudge: explain" in prompt
+    assert service.thread_keys == ["ai_tools:explain:ghostty"]
+
+
+def test_shortcut_endpoint_empty_text_opens_ask_mode_without_submitting() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps({"app": "Mail", "text": "", "interaction": "replace-selection"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "status": "accepted",
+        "client_action": "show_sidekick",
+        "panel_visibility": "manual",
+    }
+    assert service.routed_submissions == []
+    assert service.panel_actions == ["show"]
+    assert service.panel_mode_value == "ask"
+
+
+def test_shortcut_result_returns_ready_output_for_completed_run() -> None:
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="AI Tools request",
+    )
+    run.primary_output = "Use rg instead"
+    run.response_text = "Use rg instead"
+    run.mark_status(RunStatus.COMPLETED, summary="Done")
+    service = StubService(current_run=run)
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(f"http://127.0.0.1:{server.port}/api/shortcut/results/{run.run_id}", timeout=2)
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {"state": "ready", "output": "Use rg instead"}
+
+
+def test_shortcut_result_returns_review_pending_until_sidekick_selection() -> None:
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
+        prompt="AI Tools request",
+    )
+    run.mark_status(RunStatus.COMPLETED, summary="Done")
+    service = StubService(current_run=run)
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            f"http://127.0.0.1:{server.port}/api/shortcut/results/{run.run_id}?client_action=wait_for_sidekick",
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "state": "review_pending",
+        "retry_after_ms": 500,
+        "message": "Review in sidekick, then Apply to source.",
+    }
+
+
+def test_shortcut_result_returns_failed_for_terminal_run_states() -> None:
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
+        prompt="AI Tools request",
+    )
+    run.mark_status(RunStatus.FAILED, summary="Model failed")
+    service = StubService(current_run=run)
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(f"http://127.0.0.1:{server.port}/api/shortcut/results/{run.run_id}", timeout=2)
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {"state": "failed", "message": "Model failed"}
 
 
 def test_ingress_server_exposes_panel_show_hide_and_toggle_actions() -> None:

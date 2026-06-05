@@ -55,3 +55,32 @@ slack:
   # Latest @codex is used without a hard Slack `after` filter. If it is older
   # than this threshold, Codex stops and asks for a fresh request/confirmation.
   latest_message_max_age_minutes: 30
+
+# Hammerspoon posts only app/text/interaction to /api/shortcut. The bridge
+# resolves app-specific product policy here so new apps usually do not require
+# Lua changes.
+shortcuts:
+  pending_retry_after_ms: 200
+  review_retry_after_ms: 500
+  profiles:
+    - name: slack
+      app_patterns: ["slack"]
+      app_context: Slack
+      nudge: slack
+      intent: reuse
+      client_action: wait_for_sidekick
+      show_panel: true
+      panel_mode: rewrite
+    - name: explain
+      app_patterns: ["ghostty", "iterm2", "visual studio code", "code"]
+      nudge: explain
+      intent: reuse
+      client_action: poll_and_replace
+      show_panel: true
+      panel_mode: rewrite
+    - name: default
+      app_patterns: ["*"]
+      intent: reuse
+      client_action: poll_and_replace
+      show_panel: true
+      panel_mode: rewrite

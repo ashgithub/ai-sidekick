@@ -3,8 +3,6 @@ require("hs.ipc")
 
 -- Paths
 local dir = os.getenv("HOME") .. "/work/code/python/ai_tools"
-local scriptPath = dir .. "/clients/multi_tool_client.py"
-local sidekick_client_script = dir .. "/scripts/run_app.sh"
 local web_panel_config_script = dir .. "/scripts/codex_web_panel_config_json.sh"
 local web_panel_start_script = dir .. "/scripts/start_web_panel_daemon.sh"
 local ai_tools_sidekick_enabled = true
@@ -140,10 +138,8 @@ local function sidekick_urls()
     local base_url = "http://127.0.0.1:" .. port
     return {
         ready = base_url .. "/readyz",
-        invoke = base_url .. "/api/invoke",
-        ai_tools = base_url .. "/api/ai-tools",
-        runs = base_url .. "/api/runs",
-        show = base_url .. "/api/panel/show",
+        shortcut = base_url .. "/api/shortcut",
+        shortcut_results = base_url .. "/api/shortcut/results/",
         panel_visibility = (config.panel and config.panel.visibility) or "always",
     }
 end
@@ -289,251 +285,107 @@ local function paste_ai_tools_output(trigger_app, config, originalClipboard, out
     restore_clipboard_later(originalClipboard)
 end
 
-local function run_ai_tools_cli_fallback(trigger_app, appName, config, originalClipboard, text, nudge_arg)
-    local source_label = (appName and appName ~= "") and appName or "AI Tools"
-    local sidekick_command = string.format(
-        "cd %s && %s --source-kind ai_tools --app %q --source-label %q --source-id %q%s --wait --no-show <<'EOF'\n%s\nEOF",
-        dir,
-        sidekick_client_script,
-        appName,
-        source_label,
-        "ai-tools-" .. tostring(os.time()),
-        nudge_arg,
-        text
-    )
-
-    local task = hs.task.new("/bin/zsh",
-        function(exitCode, stdOut, stdErr)
-            log.d("--- AI Tools sidekick output ---")
-            log.d("Exit Code: " .. tostring(exitCode))
-            log.d("stdout:\n" .. (stdOut or "[No stdout]"))
-            log.d("stderr:\n" .. (stdErr or "[No stderr]"))
-
-            if exitCode == nil then
-                show_status("cancelled", appName)
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
-                return
-            end
-
-            if exitCode ~= 0 then
-                local stderr_text = (stdErr or ""):gsub("%s+$", "")
-                local first_line = stderr_text:match("([^\n]+)") or "Unknown error"
-                show_status("error", appName, "Sidekick failed: " .. first_line, true)
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
-                return
-            end
-
-            if not stdOut or stdOut == "" then
-                show_status("cancelled", appName)
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
-                return
-            end
-
-            paste_ai_tools_output(trigger_app, config, originalClipboard, stdOut)
-        end,
-        { "-c", sidekick_command }
-    )
-    task:start()
+local function restore_clipboard_now(originalClipboard)
+    if originalClipboard then
+        hs.pasteboard.setContents(originalClipboard)
+    end
 end
 
-local function poll_ai_tools_result(urls, run_id, trigger_app, appName, config, originalClipboard, attempt)
-    local poll_attempt = attempt or 1
-    if poll_attempt > 600 then
-        show_status("error", appName, "Timed out waiting for sidekick result.", true)
-        if originalClipboard then
-            hs.pasteboard.setContents(originalClipboard)
+local function shortcut_result_url(urls, response)
+    local poll_url = response["poll_url"]
+    if poll_url and poll_url ~= "" then
+        if poll_url:match("^http") then
+            return poll_url
         end
-        return
+        local base = urls.shortcut:gsub("/api/shortcut$", "")
+        return base .. poll_url
     end
+    local run_id = response["run_id"]
+    if run_id and run_id ~= "" then
+        return urls.shortcut_results .. run_id
+    end
+    return nil
+end
 
-    hs.http.asyncGet(urls.runs .. "/" .. run_id, {}, function(status, body, headers)
+local function poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, review_notice_shown)
+    hs.http.asyncGet(url, {}, function(status, body, headers)
         if status ~= 200 then
-            hs.timer.doAfter(0.2, function()
-                poll_ai_tools_result(urls, run_id, trigger_app, appName, config, originalClipboard, poll_attempt + 1)
-            end)
+            show_status("error", appName, "Sidekick result check failed.", true)
+            restore_clipboard_now(originalClipboard)
             return
         end
 
-        local run = hs.json.decode(body or "{}") or {}
-        local run_status = run["status"] or ""
-        local terminal_statuses = {
-            completed = true,
-            failed = true,
-            not_found = true,
-            stale_source = true,
-            cancelled = true,
-        }
-        if not terminal_statuses[run_status] then
-            hs.timer.doAfter(0.2, function()
-                poll_ai_tools_result(urls, run_id, trigger_app, appName, config, originalClipboard, poll_attempt + 1)
-            end)
-            return
-        end
-
-        if run_status ~= "completed" then
-            show_status("error", appName, "Sidekick finished with status: " .. run_status, true)
-            if originalClipboard then
-                hs.pasteboard.setContents(originalClipboard)
-            end
-            return
-        end
-
-        local output = run["primary_output"] or run["response_text"] or ""
-        if output == "" then
-            show_status("cancelled", appName)
-            if originalClipboard then
-                hs.pasteboard.setContents(originalClipboard)
-            end
-            return
-        end
-        paste_ai_tools_output(trigger_app, config, originalClipboard, output)
-    end)
-end
-
-local function run_has_output_selected(run)
-    local trace = run["trace"] or {}
-    for _, entry in ipairs(trace) do
-        if entry["kind"] == "output_selected" then
-            return true
-        end
-    end
-    return false
-end
-
-local function wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appName, config, originalClipboard, attempt)
-    local poll_attempt = attempt or 1
-    if poll_attempt > 3600 then
-        show_status("error", appName, "Timed out waiting for sidekick review.", true)
-        if originalClipboard then
-            hs.pasteboard.setContents(originalClipboard)
-        end
-        return
-    end
-
-    hs.http.asyncGet(urls.runs .. "/" .. run_id, {}, function(status, body, headers)
-        if status ~= 200 then
-            hs.timer.doAfter(0.5, function()
-                wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appName, config, originalClipboard, poll_attempt + 1)
-            end)
-            return
-        end
-
-        local run = hs.json.decode(body or "{}") or {}
-        local run_status = run["status"] or ""
-        if run_status == "completed" and run_has_output_selected(run) then
-            local output = run["primary_output"] or run["response_text"] or ""
+        local result = hs.json.decode(body or "{}") or {}
+        local state = result["state"] or ""
+        if state == "ready" then
+            local output = result["output"] or ""
             if output == "" then
                 show_status("cancelled", appName)
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
+                restore_clipboard_now(originalClipboard)
                 return
             end
             paste_ai_tools_output(trigger_app, config, originalClipboard, output)
             return
         end
 
-        if run_status == "failed" or run_status == "not_found" or run_status == "stale_source" or run_status == "cancelled" then
-            show_status("error", appName, "Sidekick finished with status: " .. run_status, true)
-            if originalClipboard then
-                hs.pasteboard.setContents(originalClipboard)
+        if state == "pending" or state == "review_pending" then
+            local notice_shown = review_notice_shown
+            if state == "review_pending" and not notice_shown then
+                local message = result["message"] or "Review in sidekick, then Apply to source."
+                show_status("queued", appName, message)
+                notice_shown = true
             end
+            local retry_after_ms = tonumber(result["retry_after_ms"] or 200) or 200
+            hs.timer.doAfter(retry_after_ms / 1000, function()
+                poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, notice_shown)
+            end)
             return
         end
 
-        if run_status == "completed" and poll_attempt == 1 then
-            show_status("queued", appName, "Review in sidekick, edit if needed, then Apply to source.")
-        end
-        hs.timer.doAfter(0.5, function()
-            wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appName, config, originalClipboard, poll_attempt + 1)
-        end)
+        local message = result["message"] or "Sidekick shortcut failed."
+        show_status("error", appName, message, true)
+        restore_clipboard_now(originalClipboard)
     end)
 end
 
-local function should_wait_for_sidekick_selection(app_bucket)
-    return app_bucket == "slack"
-end
-
-local function submit_ai_tools_direct(urls, trigger_app, appName, config, originalClipboard, text, nudge, wait_for_selection)
-    local source_label = (appName and appName ~= "") and appName or "AI Tools"
+local function submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text)
     local payload = {
-        ["source_kind"] = "ai_tools",
-        ["source_label"] = source_label,
-        ["source_id"] = "ai-tools-" .. tostring(os.time()),
+        ["app"] = appName,
         ["text"] = text,
-        ["app_context"] = appName,
-        ["nudge"] = nudge,
-        ["intent"] = "reuse",
+        ["interaction"] = "replace-selection",
     }
 
     show_status("queued", appName)
-    hs.http.asyncPost(urls.show, "{}", { ["Content-Type"] = "application/json" }, function() end)
-    hs.http.asyncPost(urls.ai_tools, hs.json.encode(payload), { ["Content-Type"] = "application/json" }, function(status, body, headers)
+    hs.http.asyncPost(urls.shortcut, hs.json.encode(payload), { ["Content-Type"] = "application/json" }, function(status, body, headers)
         if status ~= 200 then
-            log.e("Direct AI Tools submit failed; falling back to CLI. status=" .. tostring(status) .. " body=" .. tostring(body))
-            if wait_for_selection then
-                show_status("error", appName, "Sidekick submit failed; not auto-submitting Slack text.", true)
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
-                return
-            end
-            local nudge_arg = ""
-            if nudge == "explain" then
-                nudge_arg = " --nudge explain"
-            elseif nudge then
-                nudge_arg = " --nudge " .. nudge
-            end
-            run_ai_tools_cli_fallback(trigger_app, appName, config, originalClipboard, text, nudge_arg)
+            show_status("error", appName, "Codex sidekick did not accept the shortcut.", true)
+            log.e("Shortcut submit failed: status=" .. tostring(status) .. " body=" .. tostring(body))
+            restore_clipboard_now(originalClipboard)
             return
         end
+
         local response = hs.json.decode(body or "{}") or {}
-        local run_id = response["run_id"]
-        if not run_id or run_id == "" then
-            show_status("error", appName, "Sidekick did not return a run id.", true)
-            if originalClipboard then
-                hs.pasteboard.setContents(originalClipboard)
-            end
-            return
-        end
-        if wait_for_selection then
-            wait_for_ai_tools_user_selection(urls, run_id, trigger_app, appName, config, originalClipboard, 1)
-        else
-            poll_ai_tools_result(urls, run_id, trigger_app, appName, config, originalClipboard, 1)
-        end
-    end)
-end
-
-local function open_ai_tools_ask_mode(appName, originalClipboard)
-    local urls = sidekick_urls()
-    if originalClipboard then
-        hs.pasteboard.setContents(originalClipboard)
-    end
-    hs.http.asyncGet(urls.ready, {}, function(status, body, headers)
-        if status ~= 200 then
-            hs.alert.show("Codex sidekick is not running\nStart: " .. web_panel_start_script .. " --restart", 6)
-            log.e("AI Tools sidekick bridge unavailable for Ask mode: status=" .. tostring(status) .. " body=" .. tostring(body))
-            return
-        end
-        local payload = hs.json.encode({ ["mode"] = "ask" })
-        hs.http.asyncPost(urls.show, payload, { ["Content-Type"] = "application/json" }, function(show_status_code, show_body, show_headers)
-            if show_status_code ~= 200 then
-                show_status("error", appName, "Could not open Ask mode.", true)
-                log.e("Ask mode panel show failed: status=" .. tostring(show_status_code) .. " body=" .. tostring(show_body))
-                return
-            end
+        local client_action = response["client_action"] or ""
+        if client_action == "show_sidekick" then
             show_status("queued", appName, "Ask in the sidekick.")
-        end)
+            restore_clipboard_now(originalClipboard)
+            return
+        end
+
+        local result_url = shortcut_result_url(urls, response)
+        if not result_url then
+            show_status("error", appName, "Sidekick did not return a shortcut result URL.", true)
+            restore_clipboard_now(originalClipboard)
+            return
+        end
+        if client_action == "wait_for_sidekick" then
+            result_url = result_url .. "?client_action=wait_for_sidekick"
+        end
+        poll_shortcut_result(result_url, trigger_app, appName, config, originalClipboard)
     end)
 end
 
-local function run_processing(trigger_app, appName, config, scriptMode, windowArgs)
+local function run_processing(trigger_app, appName, config)
     -- Save original clipboard
     local originalClipboard = hs.pasteboard.getContents()
 
@@ -541,15 +393,6 @@ local function run_processing(trigger_app, appName, config, scriptMode, windowAr
     config.copy()
 
     local text = hs.pasteboard.getContents()
-    if not text or text == "" then
-        open_ai_tools_ask_mode(appName, originalClipboard)
-        return
-    end
-
-    if text:find("EOF") then
-        show_status("error", appName, "Text contains EOF. Cannot safely use heredoc.", true)
-        return
-    end
 
     if ai_tools_sidekick_enabled then
         local urls = sidekick_urls()
@@ -563,75 +406,12 @@ local function run_processing(trigger_app, appName, config, scriptMode, windowAr
                 return
             end
 
-            local app_bucket = normalize_app_bucket(appName)
-            local nudge = nil
-            if app_bucket == "iterm2" or app_bucket == "ghostty" then
-                nudge = "explain"
-            end
-            submit_ai_tools_direct(
-                urls,
-                trigger_app,
-                appName,
-                config,
-                originalClipboard,
-                text,
-                nudge,
-                should_wait_for_sidekick_selection(app_bucket)
-            )
+            submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text or "")
         end)
         return
     end
-
-    local heredoc = string.format(
-        "cd %s && /opt/homebrew/bin/uv run %s %s %s <<'EOF'\n%s\nEOF",
-        dir, scriptPath, scriptMode, windowArgs, text
-    )
-    show_status("processing", appName)
-
-    local task = hs.task.new("/bin/zsh",
-        function(exitCode, stdOut, stdErr)
-            log.d("--- Python Output ---")
-            log.d("Exit Code: " .. tostring(exitCode))
-            log.d("stdout:\n" .. (stdOut or "[No stdout]"))
-            log.d("stderr:\n" .. (stdErr or "[No stderr]"))
-
-            if exitCode == nil then
-                show_status("cancelled", appName)
-                return
-            end
-
-            if exitCode ~= 0 then
-                local stderr_text = (stdErr or ""):gsub("%s+$", "")
-                local first_line = stderr_text:match("([^\n]+)") or "Unknown error"
-                log.e("Model/tool execution failed script=" .. scriptPath)
-                log.e("stderr:\n" .. (stderr_text ~= "" and stderr_text or "[No stderr]"))
-                show_status("error", appName, "Model/tool failed: " .. first_line, true)
-                return
-            end
-
-            if not stdOut or stdOut == "" then
-                show_status("cancelled", appName)
-                return
-            end
-
-            hs.pasteboard.setContents(stdOut)
-
-            if trigger_app then
-                trigger_app:activate()
-            end
-            hs.timer.usleep(200000)
-
-            config.paste()
-
-            -- Restore clipboard
-            hs.timer.doAfter(0.5, function()
-                hs.pasteboard.setContents(originalClipboard)
-            end)
-        end,
-        { "-c", heredoc }
-    )
-
-    task:start()
+    show_status("error", appName, "Codex sidekick shortcut is disabled.", true)
+    restore_clipboard_now(originalClipboard)
 end
 
 function processAppText()
@@ -639,11 +419,9 @@ function processAppText()
     local trigger_app = (trigger_window and trigger_window:application()) or hs.application.frontmostApplication()
     local appName = trigger_app and trigger_app:name() or ""
     local config = app_configs[appName] or app_configs["default"]
-    local scriptMode = string.format("--app %q", appName)
-    local windowArgs = build_window_args(trigger_window, trigger_app)
 
     hs.timer.doAfter(0.2, function()
-        run_processing(trigger_app, appName, config, scriptMode, windowArgs)
+        run_processing(trigger_app, appName, config)
     end)
 end
 

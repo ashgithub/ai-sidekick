@@ -48,12 +48,53 @@ class SlackConfig(BaseModel):
     latest_message_max_age_minutes: int = 30
 
 
+class ShortcutProfileConfig(BaseModel):
+    name: str
+    app_patterns: list[str] = Field(default_factory=list)
+    app_context: str | None = None
+    nudge: str | None = None
+    intent: str = "reuse"
+    client_action: Literal["poll_and_replace", "wait_for_sidekick"] = "poll_and_replace"
+    show_panel: bool = True
+    panel_mode: Literal["ask", "rewrite"] = "rewrite"
+
+
+def default_shortcut_profiles() -> list[ShortcutProfileConfig]:
+    return [
+        ShortcutProfileConfig(
+            name="slack",
+            app_patterns=["slack"],
+            app_context="Slack",
+            nudge="slack",
+            client_action="wait_for_sidekick",
+        ),
+        ShortcutProfileConfig(
+            name="explain",
+            app_patterns=["ghostty", "iterm2", "visual studio code", "code"],
+            nudge="explain",
+            client_action="poll_and_replace",
+        ),
+        ShortcutProfileConfig(
+            name="default",
+            app_patterns=["*"],
+            client_action="poll_and_replace",
+        ),
+    ]
+
+
+class ShortcutsConfig(BaseModel):
+    profiles: list[ShortcutProfileConfig] = Field(default_factory=default_shortcut_profiles)
+    pending_retry_after_ms: int = 200
+    review_retry_after_ms: int = 500
+
+
 class WebPanelConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     panel: PanelConfig = Field(default_factory=PanelConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     codex: CodexConfig = Field(default_factory=CodexConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
+    shortcuts: ShortcutsConfig = Field(default_factory=ShortcutsConfig)
 
 
 def default_config_path(repo_root: Path) -> Path:
@@ -84,6 +125,7 @@ def config_for_lua(config: WebPanelConfig) -> dict[str, Any]:
             "status_mode": config.slack.status_mode,
             "latest_message_max_age_minutes": config.slack.latest_message_max_age_minutes,
         },
+        "shortcuts": config.shortcuts.model_dump(mode="json"),
     }
 
 

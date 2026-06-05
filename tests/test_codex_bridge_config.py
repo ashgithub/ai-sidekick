@@ -31,6 +31,17 @@ slack:
   enabled: true
   prompt_file: slack_codex_workflow/prompts/codex_worker.md
   latest_message_max_age_minutes: 45
+shortcuts:
+  pending_retry_after_ms: 250
+  review_retry_after_ms: 750
+  profiles:
+    - name: custom-terminal
+      app_patterns: ["Warp"]
+      nudge: explain
+      client_action: poll_and_replace
+    - name: default
+      app_patterns: ["*"]
+      client_action: poll_and_replace
 """,
         encoding="utf-8",
     )
@@ -48,6 +59,12 @@ slack:
     assert config.codex.reusable_thread_max_age_minutes == 45
     assert config.slack.prompt_file == tmp_path / "slack_codex_workflow" / "prompts" / "codex_worker.md"
     assert config.slack.latest_message_max_age_minutes == 45
+    assert config.shortcuts.pending_retry_after_ms == 250
+    assert config.shortcuts.review_retry_after_ms == 750
+    assert config.shortcuts.profiles[0].name == "custom-terminal"
+    assert config.shortcuts.profiles[0].app_patterns == ["Warp"]
+    assert config.shortcuts.profiles[0].nudge == "explain"
+    assert config.shortcuts.profiles[0].client_action == "poll_and_replace"
 
 
 def test_load_web_panel_config_uses_defaults() -> None:
@@ -66,3 +83,11 @@ def test_load_web_panel_config_uses_defaults() -> None:
     assert config.codex.reusable_thread_max_age_minutes == 60
     assert config.slack.latest_message_max_age_minutes == 30
     assert config.slack.prompt_file == Path("/tmp/repo/slack_codex_workflow/prompts/codex_worker.md")
+    assert [profile.name for profile in config.shortcuts.profiles] == ["slack", "explain", "default"]
+    assert config.shortcuts.profiles[0].app_patterns == ["slack"]
+    assert config.shortcuts.profiles[0].nudge == "slack"
+    assert config.shortcuts.profiles[0].client_action == "wait_for_sidekick"
+    assert config.shortcuts.profiles[1].nudge == "explain"
+    assert config.shortcuts.profiles[1].client_action == "poll_and_replace"
+    assert config.shortcuts.pending_retry_after_ms == 200
+    assert config.shortcuts.review_retry_after_ms == 500

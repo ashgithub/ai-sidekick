@@ -28,7 +28,7 @@ Developer entry points:
 
 For shortcut testing, start `./scripts/start_web_panel_daemon.sh` in a terminal and leave it running. The Slack hotkey does not auto-start the bridge; if the bridge is not reachable, Hammerspoon shows the script path to run.
 
-Configuration lives in `config/codex_web_panel.yaml`. It controls the loopback port, panel visibility, native macOS notifications, function-key panel hotkey, Codex model/thread defaults, Slack prompt path, and the stale-source threshold for latest `@codex` lookup. The default Codex working directory is `~/tmp/codex_ai_tools`, so sidekick proofread/explain threads do not appear under the current project unless you change `codex.cwd`. On startup, the bridge exposes this repo's editable `skills/` directory at `<codex.cwd>/skills`, which keeps skill lookups local to the Codex cwd. The default panel toggle hotkey is `F5`; change `panel.open_hotkey` if browser refresh conflicts with your muscle memory.
+Configuration lives in `config/codex_web_panel.yaml`. It controls the loopback port, panel visibility, native macOS notifications, function-key panel hotkey, Codex model/thread defaults, Slack prompt path, AI Text Tools shortcut profiles, and the stale-source threshold for latest `@codex` lookup. The default Codex working directory is `~/tmp/codex_ai_tools`, so sidekick proofread/explain threads do not appear under the current project unless you change `codex.cwd`. On startup, the bridge exposes this repo's editable `skills/` directory at `<codex.cwd>/skills`, which keeps skill lookups local to the Codex cwd. The default panel toggle hotkey is `F5`; change `panel.open_hotkey` if browser refresh conflicts with your muscle memory.
 
 The bridge exposes `GET /healthz` for process liveness and `GET /readyz` for shortcut readiness. Readiness verifies the Codex binary is executable before Hammerspoon submits work. Run state is intentionally ephemeral: the bridge keeps only the current invocation in memory, and a restart clears it.
 
@@ -47,7 +47,7 @@ Panel visibility is source-neutral and configurable. The current POC default is 
 Current integration scope:
 1. Slack hotkey ingress posts to `/ingest/slack`.
 2. The sidekick can steer the active turn, continue the current thread, or start a new task.
-3. `ai_tools` CLI/Hammerspoon text processing submits structured text-tool work to `/api/ai-tools` and pastes the primary output back into the source app. Hammerspoon posts directly to the bridge, avoiding the Python CLI startup path. Slack text runs wait for sidekick review/edit and only paste after `Use / Submit`.
+3. `ai_tools` CLI submits explicit structured text-tool work to `/api/ai-tools`. Hammerspoon posts only `{app, text, interaction}` to `/api/shortcut`; the bridge resolves app profiles, nudges, thread reuse, panel behavior, and shortcut polling results before Hammerspoon pastes the selected output back into the source app. Slack text runs wait for sidekick review/edit and only paste after `Use / Submit`.
 4. The legacy Tk client is still available with `./scripts/run_app.sh --tk`.
 5. The zsh command helper submits to the sidekick through `scripts/codex_nl_shell_sidekick.sh` and still inserts the generated command for review before Enter.
 

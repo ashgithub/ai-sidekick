@@ -102,7 +102,7 @@ Use the `Abort` button to interrupt the current in-flight Codex turn. If Codex i
 
 To verify the failure path, stop `scripts/start_web_panel_daemon.sh` and press the hotkey again. Expected result: Hammerspoon stops with `Codex bridge is not running` and a `Start: .../scripts/start_web_panel_daemon.sh --restart` hint; it should not open Codex.app.
 
-Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, structured `ai_tools` text submissions through `/api/ai-tools`, and a zsh command-generation helper at `scripts/codex_nl_shell_sidekick.sh`. The AI Text Tools Hammerspoon shortcut posts directly to `/api/ai-tools` and polls the accepted run for paste-back; it does not spawn the Python CLI on the hot path.
+Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, explicit structured `ai_tools` text submissions through `/api/ai-tools`, and a zsh command-generation helper at `scripts/codex_nl_shell_sidekick.sh`. The AI Text Tools Hammerspoon shortcut posts minimal source context to `/api/shortcut`; the bridge resolves app policy and exposes shortcut result polling for paste-back. Hammerspoon does not spawn the Python CLI on the hot path.
 
 ## Status Messages
 
