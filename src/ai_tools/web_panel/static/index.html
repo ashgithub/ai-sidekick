@@ -54,6 +54,13 @@
           <details id="refine-drawer" class="refine-drawer" hidden>
             <summary>Refine this</summary>
             <textarea id="refine-input" class="refine-input" rows="3" spellcheck="true" placeholder="Tell Codex what to change."></textarea>
+            <label class="refine-thread-control" for="refine-thread-mode">
+              <span>Thread</span>
+              <select id="refine-thread-mode">
+                <option value="auto" selected>Same thread</option>
+                <option value="new">Fresh thread</option>
+              </select>
+            </label>
             <div class="canvas-actions">
               <span id="refine-feedback" class="action-feedback" aria-live="polite"></span>
               <button id="refine-submit-btn" type="button">Revise draft</button>

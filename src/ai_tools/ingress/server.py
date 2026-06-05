@@ -337,17 +337,46 @@ class LocalIngressServer:
                 if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/select-output"):
                     run_id = parsed.path.split("/")[3]
                     selected_text = str(body.get("text", "")) if "text" in body else None
-                    run = outer.service.select_run_output(
-                        run_id,
-                        output_key=str(body.get("output_key", "")).strip(),
-                        selected_text=selected_text,
-                    )
+                    try:
+                        run = outer.service.select_run_output(
+                            run_id,
+                            output_key=str(body.get("output_key", "")).strip(),
+                            selected_text=selected_text,
+                        )
+                    except ValueError as exc:
+                        self._write_json(
+                            HTTPStatus.BAD_REQUEST,
+                            {"error": "selection_rejected", "message": str(exc)},
+                        )
+                        return
                     self._write_json(
                         HTTPStatus.OK,
                         {
                             "run_id": run.run_id,
                             "primary_output": run.primary_output,
                             "selected_output_label": run.selected_output_label,
+                        },
+                    )
+                    return
+                if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/review-output"):
+                    run_id = parsed.path.split("/")[3]
+                    try:
+                        run = outer.service.review_run_output(
+                            run_id,
+                            output_key=str(body.get("output_key", "")).strip(),
+                            edited_text=str(body.get("text", "")),
+                        )
+                    except ValueError as exc:
+                        self._write_json(
+                            HTTPStatus.BAD_REQUEST,
+                            {"error": "review_rejected", "message": str(exc)},
+                        )
+                        return
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {
+                            "run_id": run.run_id,
+                            "status": run.status.value,
                         },
                     )
                     return

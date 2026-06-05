@@ -228,6 +228,8 @@ class CodexBridgeService:
         label, text = self._resolve_output_selection(run, output_key)
         if selected_text is not None:
             if selected_text.strip():
+                if selected_text != text:
+                    raise ValueError("Edited output must be reviewed before applying to source")
                 text = selected_text
         run.primary_output = text
         run.response_text = text
@@ -236,6 +238,72 @@ class CodexBridgeService:
         run.append_trace(kind="output_selected", label=f"Selected output: {label}")
         self.store.upsert(run)
         return run
+
+    def review_run_output(self, run_id: str, *, output_key: str, edited_text: str) -> RunRecord:
+        run = self._require_run(run_id)
+        label, original_text = self._resolve_output_selection(run, output_key)
+        draft = edited_text.strip()
+        if not draft:
+            raise ValueError("Edited output is empty")
+        if edited_text == original_text:
+            raise ValueError("Output is unchanged; apply it directly")
+        if not run.thread_id:
+            raise ValueError(f"Run {run.run_id} has no thread")
+
+        prompt = self._review_edited_output_prompt(
+            run=run,
+            selected_label=label,
+            original_text=original_text,
+            edited_text=edited_text,
+        )
+        turn_response = self.client.turn_start(
+            {
+                "threadId": run.thread_id,
+                "input": [{"type": "text", "text": prompt}],
+                "cwd": str(self.cwd),
+            }
+        )
+        if "turnId" in turn_response:
+            run.turn_id = turn_response["turnId"]
+        run.approval_needed = False
+        run.pending_request_id = None
+        run.response_text = ""
+        run.raw_response_text = ""
+        run.primary_output = ""
+        run.selected_output_text = ""
+        run.append_transcript(kind="user", message=prompt)
+        run.append_trace(kind="output_review_requested", label=f"Review edited output: {label}")
+        run.mark_status(RunStatus.RUNNING, summary="Reviewing edited output")
+        self.store.upsert(run)
+        self.notifier.run_started("Run started", "Reviewing edited output.")
+        return run
+
+    def _review_edited_output_prompt(
+        self,
+        *,
+        run: RunRecord,
+        selected_label: str,
+        original_text: str,
+        edited_text: str,
+    ) -> str:
+        return "\n".join(
+            [
+                "Review the edited draft below using the same AI Tools instructions, app context, nudge, and output format as the original run.",
+                "Return JSON only, using the same expected JSON shape from the original AI Tools request.",
+                "Do not apply the text to the source app.",
+                "",
+                f"Selected output: {selected_label}",
+                "",
+                "Original selected output:",
+                original_text,
+                "",
+                "Edited draft:",
+                edited_text.strip(),
+                "",
+                "Original AI Tools request:",
+                run.prompt,
+            ]
+        ).strip()
 
     def _default_output_label(self, run: RunRecord) -> str:
         if run.render_kind == "text_pair":

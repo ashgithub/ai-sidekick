@@ -47,7 +47,7 @@ Panel visibility is source-neutral and configurable. The current POC default is 
 Current integration scope:
 1. Slack hotkey ingress posts to `/ingest/slack`.
 2. The sidekick can steer the active turn, continue the current thread, or start a new task.
-3. `ai_tools` CLI submits explicit structured text-tool work to `/api/ai-tools`. Hammerspoon posts only `{app, text, interaction}` to `/api/shortcut`; the bridge resolves app profiles, nudges, thread reuse, panel behavior, and shortcut polling results before Hammerspoon pastes the selected output back into the source app. Slack text runs wait for sidekick review/edit and only paste after `Use / Submit`.
+3. `ai_tools` CLI submits explicit structured text-tool work to `/api/ai-tools`. Hammerspoon posts only `{app, text, interaction}` to `/api/shortcut`; the bridge resolves app profiles, nudges, thread reuse, panel behavior, and shortcut polling results before Hammerspoon pastes the selected output back into the source app. Slack text runs wait for sidekick review and only paste after `Apply to source`; any Sidekick-edited AI output must first go through `Review changes` before it can be applied.
 4. The legacy Tk client is still available with `./scripts/run_app.sh --tk`.
 5. The zsh command helper submits to the sidekick through `scripts/codex_nl_shell_sidekick.sh` and still inserts the generated command for review before Enter.
 

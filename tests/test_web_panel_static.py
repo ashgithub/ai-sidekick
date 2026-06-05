@@ -88,7 +88,8 @@ def test_web_panel_js_reads_current_run_and_maps_attention_states() -> None:
     assert "Stale @codex message" in js
     assert "renderPhaseList" in js
     assert "refinementPrompt" in js
-    assert 'intent: "auto"' in js
+    assert "refine-thread-mode" in html
+    assert 'intent: refineThreadModeEl.value === "new" ? "new" : "auto"' in js
 
 
 def test_web_panel_reconnects_event_stream_instead_of_going_stale() -> None:
@@ -109,12 +110,15 @@ def test_web_panel_renders_structured_ai_tools_outputs() -> None:
     assert "rewrite-feedback" in html
     assert "selectOutput" in js
     assert "Apply to source" in html
+    assert "Review changes" in js
     assert "Copy text" in html
     assert "Copied to clipboard." in js
-    assert "Applied edited text." in js
+    assert "Applied to source." in js
+    assert "Reviewing changes." in js
     assert "Refine this" in html
     assert "Revise draft" in html
     assert "Tell Codex what to change." in html
+    assert "Fresh thread" in html
     assert "Revision requested." in js
     assert "Current draft:" in js
     assert "selectedOutputKey" in js
@@ -122,6 +126,7 @@ def test_web_panel_renders_structured_ai_tools_outputs() -> None:
     assert "Corrected" in html
     assert "Rewritten" in html
     assert "/select-output" in js
+    assert "/review-output" in js
     assert "text_pair" in js
     assert "primary_output" in js
 

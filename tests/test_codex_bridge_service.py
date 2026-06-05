@@ -181,7 +181,7 @@ def test_select_run_output_updates_primary_text_for_text_pair() -> None:
     assert updated.selected_output_label == "Corrected"
 
 
-def test_select_run_output_can_apply_user_edited_text() -> None:
+def test_select_run_output_rejects_user_edited_text() -> None:
     service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
     run = RunRecord.create(
         source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
@@ -193,12 +193,48 @@ def test_select_run_output_can_apply_user_edited_text() -> None:
     run.response_text = "Rewritten text"
     service.store.upsert(run)
 
-    updated = service.select_run_output(run.run_id, output_key="rewritten", selected_text="  Edited Slack text\n")
+    try:
+        service.select_run_output(run.run_id, output_key="rewritten", selected_text="Edited Slack text")
+    except ValueError as exc:
+        assert str(exc) == "Edited output must be reviewed before applying to source"
+    else:
+        raise AssertionError("edited output was applied without review")
 
-    assert updated.primary_output == "  Edited Slack text\n"
-    assert updated.response_text == "  Edited Slack text\n"
-    assert updated.selected_output_label == "Rewritten"
-    assert updated.trace[-1].kind == "output_selected"
+
+def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
+    client = FakeClient()
+    service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
+    run = service.submit_run(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
+        prompt="AI Tools request\n\nInput:\nOriginal Slack text",
+    )
+    run.render_kind = "text_pair"
+    run.structured_output = {"corrected": "Corrected text", "rewritten": "Rewritten text"}
+    run.primary_output = "Rewritten text"
+    run.response_text = "Rewritten text"
+    run.mark_status(RunStatus.COMPLETED, summary="Done")
+    service.store.upsert(run)
+
+    reviewed = service.review_run_output(
+        run.run_id,
+        output_key="rewritten",
+        edited_text="Edited Slack text",
+    )
+
+    assert reviewed.run_id == run.run_id
+    assert reviewed.thread_id == "thread-1"
+    assert len(client.thread_start_calls) == 1
+    assert client.turn_start_calls[-1]["threadId"] == "thread-1"
+    review_prompt = client.turn_start_calls[-1]["input"][0]["text"]
+    assert "Review the edited draft below using the same AI Tools instructions" in review_prompt
+    assert "Original selected output:" in review_prompt
+    assert "Rewritten text" in review_prompt
+    assert "Edited draft:" in review_prompt
+    assert "Edited Slack text" in review_prompt
+    assert reviewed.status is RunStatus.RUNNING
+    assert reviewed.primary_output == ""
+    assert reviewed.response_text == ""
+    assert reviewed.trace[-1].kind == "output_review_requested"
 
 
 def test_server_approval_request_marks_run_as_attention_needed() -> None:

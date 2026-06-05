@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib import request
 
 from ai_tools.codex_bridge.models import RunRecord, RunStatus, SourceMetadata
@@ -21,6 +22,7 @@ class StubService:
         self.panel_actions: list[str] = []
         self.abort_calls: list[str] = []
         self.select_calls: list[tuple[str, str, str | None]] = []
+        self.review_calls: list[tuple[str, str, str]] = []
         self.submit_error = submit_error
         self.ready = ready
         self.thread_keys: list[str | None] = []
@@ -79,6 +81,17 @@ class StubService:
             },
         )()
 
+    def review_run_output(self, run_id: str, *, output_key: str, edited_text: str):
+        self.review_calls.append((run_id, output_key, edited_text))
+        return type(
+            "Run",
+            (),
+            {
+                "run_id": run_id,
+                "status": type("Status", (), {"value": "running"})(),
+            },
+        )()
+
     def list_runs(self):
         return [self.current_run_record] if self.current_run_record else []
 
@@ -94,6 +107,11 @@ class StubService:
         if self.ready:
             return {"ready": True, "code": "ready", "message": "bridge ready"}
         return {"ready": False, "code": "state_unwritable", "message": "state path is not writable"}
+
+
+class RejectingSelectionService(StubService):
+    def select_run_output(self, run_id: str, *, output_key: str, selected_text: str | None = None):
+        raise ValueError("Edited output must be reviewed before applying to source")
 
 
 def test_ingress_server_accepts_slack_payload_and_reports_health() -> None:
@@ -606,6 +624,61 @@ def test_ingress_server_exposes_run_output_selection_action() -> None:
         "selected_output_label": "Alternative 2",
     }
     assert service.select_calls == [("run-123", "alternative:1", "  edited command\n")]
+
+
+def test_ingress_server_exposes_run_output_review_action() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/runs/run-123/review-output",
+                data=json.dumps({"output_key": "rewritten", "text": "Edited Slack text"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-123",
+        "status": "running",
+    }
+    assert service.review_calls == [("run-123", "rewritten", "Edited Slack text")]
+
+
+def test_ingress_server_returns_bad_request_for_rejected_output_selection() -> None:
+    service = RejectingSelectionService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        try:
+            request.urlopen(
+                request.Request(
+                    f"http://127.0.0.1:{server.port}/api/runs/run-123/select-output",
+                    data=json.dumps({"output_key": "rewritten", "text": "Edited text"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                ),
+                timeout=2,
+            )
+        except HTTPError as exc:
+            response = exc
+        else:
+            raise AssertionError("rejected selection unexpectedly succeeded")
+    finally:
+        server.stop()
+
+    assert response.code == 400
+    assert json.loads(response.read().decode("utf-8")) == {
+        "error": "selection_rejected",
+        "message": "Edited output must be reviewed before applying to source",
+    }
 
 
 def test_static_assets_are_not_cached_between_sidekick_restarts(tmp_path: Path) -> None:

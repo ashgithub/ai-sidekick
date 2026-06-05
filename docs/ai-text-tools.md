@@ -11,7 +11,9 @@ The AI Text Tools shortcut and CLI now submit to the resident Codex sidekick by 
 5. AI Text Tools use in-memory per-tool reusable Codex threads while the daemon is alive.
 6. Codex returns JSON that the sidekick renders as text, text-pair, or alternatives.
 
-The Hammerspoon hot path avoids spawning the Python CLI. It copies selected text, posts minimal JSON to `/api/shortcut`, follows the bridge-returned client action, then pastes the ready output back into the source app. Slack is the exception: Slack text runs wait in the sidekick after generation so you can preview and edit the proposed text, then `Apply to source` pastes/submits the reviewed text. If no text is selected, the bridge opens the sidekick in Ask mode without submitting automatically. `scripts/run_app.sh` remains available for explicit command-line use and legacy Tk comparison, but the Hammerspoon hot path no longer falls back to it.
+The Hammerspoon hot path avoids spawning the Python CLI. It copies selected text, posts minimal JSON to `/api/shortcut`, follows the bridge-returned client action, then pastes the ready output back into the source app. Slack is the exception: Slack text runs wait in the sidekick after generation so you can preview the proposed text, then `Apply to source` pastes/submits the reviewed text. If you edit any AI-produced output in Sidekick, the primary action changes to `Review changes`; edited output must go through another AI pass before it can be applied to any source app. If no text is selected, the bridge opens the sidekick in Ask mode without submitting automatically. `scripts/run_app.sh` remains available for explicit command-line use and legacy Tk comparison, but the Hammerspoon hot path no longer falls back to it.
+
+The `Refine this` drawer keeps follow-up controls out of the main apply path. It defaults to the same thread and includes a `Fresh thread` option for cases where the next revision should not reuse the current Codex thread context.
 
 Codex threads use `config/codex_web_panel.yaml -> codex.cwd`. The default is `~/tmp/codex_ai_tools`, so sidekick proofread/explain runs do not create threads under whichever project happens to be open. The bridge mounts this repo's editable `skills/` directory into that cwd as `<codex.cwd>/skills`, so prompts can use local skill paths without broad filesystem searches. Reusable tool threads reset after `codex.reusable_thread_max_turns` turns or `codex.reusable_thread_max_age_minutes`, whichever comes first.
 
@@ -50,6 +52,7 @@ Do not remove the legacy Tk client until these sidekick behaviors are manually a
 - Proofread/rewrite returns structured `Corrected` and `Rewritten` outputs, with `Rewritten` as the default paste-back result.
 - Slack context uses Slack-friendly formatting and emoji behavior; non-Slack contexts do not force emoji.
 - Hammerspoon `ctrl+option+command+\` replaces selected text with the primary output after the sidekick run completes, except Slack where the sidekick waits for explicit `Apply to source`.
+- Sidekick edited output changes the primary action to `Review changes` and cannot be applied to source until the reviewed follow-up output completes.
 - Terminal app contexts including iTerm2 and Ghostty route to the explain skill for the Hammerspoon text shortcut.
 - Command suggestions render alternatives in the sidekick, and each alternative can be selected/copied from the current invocation.
 - Explain/ask requests remain visible in the sidekick as single-text answers.

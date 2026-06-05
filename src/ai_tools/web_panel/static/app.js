@@ -23,6 +23,7 @@ const copyOutputBtn = document.getElementById("copy-output-btn");
 const rewriteFeedbackEl = document.getElementById("rewrite-feedback");
 const refineDrawerEl = document.getElementById("refine-drawer");
 const refineInputEl = document.getElementById("refine-input");
+const refineThreadModeEl = document.getElementById("refine-thread-mode");
 const refineSubmitBtn = document.getElementById("refine-submit-btn");
 const refineFeedbackEl = document.getElementById("refine-feedback");
 const askInputEl = document.getElementById("ask-input");
@@ -317,6 +318,13 @@ function outputText(run, key) {
   return run.primary_output || run.response_text || "";
 }
 
+function selectedOutputChanged(run) {
+  if (!canSelectOutput(run)) {
+    return false;
+  }
+  return selectedOutputTextareaEl.value !== outputText(run, selectedOutputKey);
+}
+
 function canSelectOutput(run) {
   return run && run.source && run.source.source_kind === "ai_tools" && run.status === "completed";
 }
@@ -353,6 +361,7 @@ function renderRewritePane() {
   }
   const canUse = canSelectOutput(run) && selectedOutputTextareaEl.value.trim() !== "";
   useOutputBtn.disabled = !canUse || outputSelecting;
+  useOutputBtn.textContent = selectedOutputChanged(run) ? "Review changes" : "Apply to source";
   copyOutputBtn.disabled = selectedOutputTextareaEl.value.trim() === "" || outputSelecting;
   refineDrawerEl.hidden = !canRefineRun(run);
   refineSubmitBtn.disabled = refineSubmitting || !refineInputEl.value.trim();
@@ -417,7 +426,7 @@ async function submitRefinement() {
         source_label: "Refine",
         source_id: `refine-${Date.now()}`,
         prompt: refinementPrompt(feedback, selectedOutputTextareaEl.value),
-        intent: "auto",
+        intent: refineThreadModeEl.value === "new" ? "new" : "auto",
       }),
     });
     refineInputEl.value = "";
@@ -455,13 +464,24 @@ async function selectOutput() {
   outputSelecting = true;
   renderRewritePane();
   try {
+    if (selectedOutputChanged(currentRun)) {
+      await fetchJson(`/api/runs/${currentRun.run_id}/review-output`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ output_key: selectedOutputKey, text }),
+      });
+      rewriteFeedbackEl.textContent = "Reviewing changes.";
+      selectedOutputDirty = false;
+      await refreshRuns();
+      return;
+    }
     await fetchJson(`/api/runs/${currentRun.run_id}/select-output`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ output_key: selectedOutputKey, text }),
     });
     await copyText(text);
-    setTemporaryFeedback("Applied edited text.", useOutputBtn, "Applied", "apply");
+    setTemporaryFeedback("Applied to source.", useOutputBtn, "Applied", "apply");
     selectedOutputDirty = false;
     await refreshRuns();
   } finally {
@@ -741,7 +761,7 @@ versionCorrectedBtn.addEventListener("click", () => {
   renderRewritePane();
 });
 selectedOutputTextareaEl.addEventListener("input", () => {
-  selectedOutputDirty = true;
+  selectedOutputDirty = selectedOutputChanged(currentRun);
   renderRewritePane();
 });
 refineInputEl.addEventListener("input", renderRewritePane);

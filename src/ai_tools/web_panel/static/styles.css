@@ -446,6 +446,26 @@ textarea,
   max-height: 120px;
 }
 
+.refine-thread-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--rds-space-sm);
+  color: var(--rds-text-secondary);
+  font-size: var(--rds-font-size-body-sm);
+}
+
+.refine-thread-control select {
+  min-width: 128px;
+  border: 1px solid var(--rds-border-enabled);
+  border-radius: var(--rds-radius-md);
+  background: var(--rds-surface-neutral0);
+  color: var(--rds-text-primary);
+  font-family: var(--rds-font-family-primary);
+  font-size: var(--rds-font-size-body-sm);
+  padding: var(--rds-space-2xs) var(--rds-space-xs);
+}
+
 button {
   border: 0;
   border-radius: var(--rds-radius-lg);
@@ -492,7 +512,8 @@ button:disabled {
 
 button:focus-visible,
 summary:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--rds-focus);
   outline-offset: var(--rds-space-xs);
 }

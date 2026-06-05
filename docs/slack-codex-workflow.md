@@ -56,6 +56,8 @@ Slack resolver stop conditions are surfaced as explicit run states. If no `@code
 
 `scripts/start_web_panel_daemon.sh` starts the bridge and a hidden pywebview sidekick. Use `scripts/open_web_panel.sh` to show/focus the current invocation, or use the configured `F5` Hammerspoon hotkey to toggle it. Use `scripts/start_web_panel_daemon.sh --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
 
+For Slack and every other AI Text Tools source, edited Sidekick output is not directly applied. If you change the AI-produced text, the primary action becomes `Review changes`; Sidekick runs the edited draft back through AI, then the reviewed result can be applied to the source app.
+
 If port `8765` is occupied by an older or unrelated process, `scripts/start_web_panel_daemon.sh` prints a port diagnostic and exits. Restart on the same default port with:
 
 ```bash
