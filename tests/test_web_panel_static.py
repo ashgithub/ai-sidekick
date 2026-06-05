@@ -47,18 +47,19 @@ def test_web_panel_uses_redwood_tokens_and_wraps_text() -> None:
     assert '--rds-font-family-primary: "Oracle Sans", "Segoe UI", Arial, sans-serif' in css
     assert "white-space: pre-wrap" in css
     assert "overflow-wrap: anywhere" in css
-    assert "max-width: 592px" in css
+    assert "max-width: 560px" in css
 
 
 def test_web_panel_uses_compact_sidekick_spacing() -> None:
     css = read_static("styles.css")
 
-    assert "width: min(100vw, 592px)" in css
-    assert "max-width: 592px" in css
+    assert "width: min(calc(100vw - 16px), 560px)" in css
+    assert "max-width: 560px" in css
     assert "min-height: 100vh" in css
-    assert ".sidekick-shell {\n  display: grid;\n  justify-content: center;\n  min-height: 100vh;\n  padding: 0;" in css
+    assert ".sidekick-shell {\n  display: grid;\n  justify-content: end;\n  min-height: 100vh;\n  padding: var(--rds-space-sm);" in css
     assert ".sidekick-panel {\n  display: grid;\n  align-self: start;\n  gap: var(--rds-space-sm);" in css
-    assert "box-shadow: none" in css
+    assert "border-radius: var(--rds-radius-xl)" in css
+    assert "box-shadow: var(--rds-shadow-sm)" in css
     assert "max-height: 52vh" in css
 
 

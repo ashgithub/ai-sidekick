@@ -111,14 +111,14 @@ def test_panel_visibility_override_rejects_unknown_values() -> None:
 
 def test_native_window_dimensions_match_sidekick_surface() -> None:
     assert PANEL_WINDOW_WIDTH == 592
-    assert PANEL_WINDOW_HEIGHT == 760
+    assert PANEL_WINDOW_HEIGHT == 560
     assert PANEL_WINDOW_MIN_WIDTH == 592
-    assert PANEL_WINDOW_MIN_HEIGHT == 560
+    assert PANEL_WINDOW_MIN_HEIGHT == 500
 
 
 def test_native_window_uses_codex_sidekick_identity(tmp_path: Path) -> None:
     assert PANEL_APP_NAME == "Codex Sidekick"
-    assert PANEL_ICON_PATH.name == "codex-sidekick-icon.png"
+    assert PANEL_ICON_PATH.name == "codex-sidekick-icon.icns"
     assert PANEL_ICON_PATH.exists()
     assert apply_macos_app_identity(icon_path=tmp_path / "missing.png") is False
 

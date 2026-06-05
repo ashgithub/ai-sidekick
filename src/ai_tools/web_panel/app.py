@@ -19,11 +19,11 @@ from ai_tools.web_panel.window import PanelWindowController
 
 
 PANEL_WINDOW_WIDTH = 592
-PANEL_WINDOW_HEIGHT = 760
+PANEL_WINDOW_HEIGHT = 560
 PANEL_WINDOW_MIN_WIDTH = 592
-PANEL_WINDOW_MIN_HEIGHT = 560
+PANEL_WINDOW_MIN_HEIGHT = 500
 PANEL_APP_NAME = "Codex Sidekick"
-PANEL_ICON_PATH = Path(__file__).with_name("static") / "assets" / "codex-sidekick-icon.png"
+PANEL_ICON_PATH = Path(__file__).with_name("static") / "assets" / "codex-sidekick-icon.icns"
 
 
 def apply_macos_app_identity(icon_path: Path = PANEL_ICON_PATH, app_name: str = PANEL_APP_NAME) -> bool:
