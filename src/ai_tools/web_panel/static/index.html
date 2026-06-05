@@ -52,7 +52,7 @@
             <button id="copy-output-btn" type="button" class="ghost-button">Copy text</button>
           </div>
           <details id="refine-drawer" class="refine-drawer" hidden>
-            <summary>Refine this</summary>
+            <summary>Ask Codex to revise</summary>
             <textarea id="refine-input" class="refine-input" rows="3" spellcheck="true" placeholder="Tell Codex what to change."></textarea>
             <label class="refine-thread-control" for="refine-thread-mode">
               <span>Thread</span>
@@ -63,21 +63,22 @@
             </label>
             <div class="canvas-actions">
               <span id="refine-feedback" class="action-feedback" aria-live="polite"></span>
-              <button id="refine-submit-btn" type="button">Revise draft</button>
+              <button id="refine-submit-btn" type="button">Revise with instruction</button>
             </div>
           </details>
         </section>
 
         <section id="ask-pane" class="mode-pane" aria-label="Ask a question" hidden>
           <div class="canvas-header">
-            <h2>Ask anything</h2>
+            <h2>Ask</h2>
             <p class="helper-text">Ask a question without selecting text first.</p>
           </div>
           <textarea id="ask-input" class="output-editor" rows="4" spellcheck="true" placeholder="Type your question."></textarea>
           <div class="canvas-actions">
             <button id="ask-submit-btn" type="button">Ask</button>
-            <button id="ask-new-btn" type="button" class="ghost-button">New question</button>
+            <button id="ask-new-btn" type="button" class="ghost-button">Start new</button>
           </div>
+          <h3 class="answer-heading">Answer</h3>
           <div id="ask-output-view" class="response-text">No answer yet.</div>
         </section>
       </section>

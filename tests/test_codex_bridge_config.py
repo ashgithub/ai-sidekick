@@ -37,6 +37,7 @@ shortcuts:
   profiles:
     - name: custom-terminal
       app_patterns: ["Warp"]
+      prompt_file: prompts/explain.md
       nudge: explain
       client_action: poll_and_replace
     - name: default
@@ -63,6 +64,7 @@ shortcuts:
     assert config.shortcuts.review_retry_after_ms == 750
     assert config.shortcuts.profiles[0].name == "custom-terminal"
     assert config.shortcuts.profiles[0].app_patterns == ["Warp"]
+    assert config.shortcuts.profiles[0].prompt_file == tmp_path / "prompts" / "explain.md"
     assert config.shortcuts.profiles[0].nudge == "explain"
     assert config.shortcuts.profiles[0].client_action == "poll_and_replace"
 
@@ -83,11 +85,38 @@ def test_load_web_panel_config_uses_defaults() -> None:
     assert config.codex.reusable_thread_max_age_minutes == 60
     assert config.slack.latest_message_max_age_minutes == 30
     assert config.slack.prompt_file == Path("/tmp/repo/slack_codex_workflow/prompts/codex_worker.md")
-    assert [profile.name for profile in config.shortcuts.profiles] == ["slack", "explain", "default"]
+    assert [profile.name for profile in config.shortcuts.profiles] == [
+        "slack",
+        "email",
+        "ask",
+        "default",
+    ]
     assert config.shortcuts.profiles[0].app_patterns == ["slack"]
+    assert config.shortcuts.profiles[0].prompt_file == Path("/tmp/repo/prompts/slack.md")
     assert config.shortcuts.profiles[0].nudge == "slack"
+    assert config.shortcuts.profiles[0].render_kind == "text_pair"
     assert config.shortcuts.profiles[0].client_action == "wait_for_sidekick"
-    assert config.shortcuts.profiles[1].nudge == "explain"
-    assert config.shortcuts.profiles[1].client_action == "poll_and_replace"
+    assert config.shortcuts.profiles[1].app_patterns == ["mail", "outlook"]
+    assert config.shortcuts.profiles[1].prompt_file == Path("/tmp/repo/prompts/email.md")
+    assert config.shortcuts.profiles[1].render_kind == "text_pair"
+    assert config.shortcuts.profiles[1].client_action == "wait_for_sidekick"
+    assert config.shortcuts.profiles[2].app_patterns == [
+        "safari",
+        "chrome",
+        "terminal",
+        "iterm2",
+        "ghostty",
+        "codex",
+        "visual studio code",
+        "code",
+    ]
+    assert config.shortcuts.profiles[2].prompt_file == Path("/tmp/repo/prompts/explain.md")
+    assert config.shortcuts.profiles[2].render_kind == "single_text"
+    assert config.shortcuts.profiles[2].client_action == "wait_for_sidekick"
+    assert config.shortcuts.profiles[2].show_panel is True
+    assert config.shortcuts.profiles[2].panel_mode == "ask"
+    assert config.shortcuts.profiles[3].prompt_file == Path("/tmp/repo/prompts/general.md")
+    assert config.shortcuts.profiles[3].render_kind == "text_pair"
+    assert config.shortcuts.profiles[3].client_action == "wait_for_sidekick"
     assert config.shortcuts.pending_retry_after_ms == 200
     assert config.shortcuts.review_retry_after_ms == 500

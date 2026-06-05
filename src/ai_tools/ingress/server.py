@@ -14,6 +14,7 @@ from ai_tools.codex_bridge.models import SourceMetadata
 from ai_tools.codex_bridge.models import RunStatus
 
 from .client import build_ai_tools_prompt
+from .prompt_contract import infer_ai_tools_render_kind
 from .manual import manual_source_metadata
 from .slack import SlackIngressPayload, build_slack_worker_prompt
 
@@ -187,6 +188,9 @@ class LocalIngressServer:
                             prompt=str(body.get("prompt", "")).strip(),
                             intent=str(body.get("intent", "new")).strip() or "new",
                         )
+                        if getattr(source, "source_label", "") == "Ask":
+                            run.display_input_text = str(body.get("prompt", "")).strip()
+                            run.panel_mode = "ask"
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
                             HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -216,6 +220,7 @@ class LocalIngressServer:
                             text=str(body.get("text", "")).strip(),
                             app_context=app_context,
                             nudge=nudge,
+                            render_kind=infer_ai_tools_render_kind(nudge),
                         )
                         run = outer.service.submit_or_route(
                             source=source,
@@ -227,6 +232,10 @@ class LocalIngressServer:
                                 nudge=nudge,
                             ),
                         )
+                        run.render_kind = infer_ai_tools_render_kind(nudge)
+                        run.display_input_text = str(body.get("text", "")).strip()
+                        run.app_context = app_context
+                        run.nudge = nudge
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
                             HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -270,6 +279,8 @@ class LocalIngressServer:
                             text=text,
                             app_context=app_context,
                             nudge=profile.nudge,
+                            prompt_file=profile.prompt_file,
+                            render_kind=profile.render_kind,
                         )
                         run = outer.service.submit_or_route(
                             source=source,
@@ -282,6 +293,14 @@ class LocalIngressServer:
                                 profile_name=profile.name,
                             ),
                         )
+                        run.render_kind = profile.render_kind
+                        run.display_input_text = text
+                        run.panel_mode = profile.panel_mode
+                        run.prompt_instructions = (
+                            profile.prompt_file.read_text(encoding="utf-8").strip() if profile.prompt_file else ""
+                        )
+                        run.app_context = app_context
+                        run.nudge = profile.nudge
                         if profile.show_panel:
                             outer.service.show_panel(mode=profile.panel_mode)
                     except Exception as exc:  # noqa: BLE001

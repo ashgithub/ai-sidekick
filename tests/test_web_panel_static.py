@@ -29,7 +29,7 @@ def test_web_panel_is_compact_sidekick_not_dashboard() -> None:
     assert "<summary>Raw output</summary>" in html
     assert "<summary>Event trace</summary>" in html
     assert "<summary>Details</summary>" in html
-    assert "Ask anything" in html
+    assert "<h2>Ask</h2>" in html
     assert "Choose a version" in html
     assert "Manual prompt" not in html
 
@@ -60,7 +60,7 @@ def test_web_panel_uses_compact_sidekick_spacing() -> None:
     assert ".sidekick-panel {\n  display: grid;\n  align-self: start;\n  gap: var(--rds-space-sm);" in css
     assert "border-radius: var(--rds-radius-xl)" in css
     assert "box-shadow: var(--rds-shadow-sm)" in css
-    assert "max-height: 52vh" in css
+    assert "max-height: 58vh" in css
 
 
 def test_web_panel_js_reads_current_run_and_maps_attention_states() -> None:
@@ -110,13 +110,13 @@ def test_web_panel_renders_structured_ai_tools_outputs() -> None:
     assert "rewrite-feedback" in html
     assert "selectOutput" in js
     assert "Apply to source" in html
-    assert "Review changes" in js
+    assert "Review edits" in js
     assert "Copy text" in html
     assert "Copied to clipboard." in js
     assert "Applied to source." in js
     assert "Reviewing changes." in js
-    assert "Refine this" in html
-    assert "Revise draft" in html
+    assert "Ask Codex to revise" in html
+    assert "Revise with instruction" in html
     assert "Tell Codex what to change." in html
     assert "Fresh thread" in html
     assert "Revision requested." in js
@@ -138,6 +138,30 @@ def test_web_panel_supports_ask_mode_without_selected_text() -> None:
     assert "mode-ask-btn" in html
     assert "ask-input" in html
     assert "ask-submit-btn" in html
+    assert "ask-question-view" not in html
+    assert "ask-question-text" not in html
+    assert "Answer" in html
+    assert "Start new" in html
     assert "Ask a question without selecting text first." in html
     assert 'source_label: "Ask"' in js
     assert 'source_kind: "manual"' in js
+    assert "lastAskQuestion" in js
+    assert "askInputEl.value = lastAskQuestion" in js
+    assert "function isAskRun(run)" in js
+    assert 'run.panel_mode === "ask"' in js
+    assert "currentRun.display_input_text || currentRun.prompt" in js
+    assert 'lastAskQuestion = prompt;\n    askInputEl.value = "";' not in js
+    assert 'currentMode === "ask" || currentRun.source.source_label === "Ask"' not in js
+
+
+def test_web_panel_carries_blank_mode_editor_text_on_user_toggle() -> None:
+    js = read_static("app.js")
+
+    assert "function transferBlankModeText(nextMode)" in js
+    assert 'if (nextMode === "ask" && askInputEl.value.trim() === "")' in js
+    assert "askInputEl.value = selectedOutputTextareaEl.value" in js
+    assert 'if (nextMode === "rewrite" && selectedOutputTextareaEl.value.trim() === "")' in js
+    assert "selectedOutputTextareaEl.value = askInputEl.value" in js
+    assert "selectedOutputDirty = selectedOutputTextareaEl.value.trim() !== \"\"" in js
+    assert 'setMode("rewrite", { persist: true, transferBlank: true })' in js
+    assert 'setMode("ask", { persist: true, transferBlank: true })' in js

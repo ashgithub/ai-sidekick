@@ -9,21 +9,72 @@ from ai_tools.ingress.client import (
 )
 
 
-def test_build_ai_tools_prompt_includes_context_and_text() -> None:
+def test_build_ai_tools_prompt_uses_compact_shape_specific_contract() -> None:
     prompt = build_ai_tools_prompt(
         text="pls fix this",
         app_context="Slack",
         nudge="proofread",
+        render_kind="text_pair",
     )
 
-    assert "AI Tools request" in prompt
+    assert prompt.startswith("AI Tools request. Do one task on the input only. Return JSON only.")
     assert "App context: Slack" in prompt
     assert "Nudge: proofread" in prompt
     assert "pls fix this" in prompt
-    assert "Return JSON only" in prompt
     assert '"render_kind"' in prompt
     assert '"structured_output"' in prompt
-    assert "Use the Codex model configured for this app-server session" in prompt
+    assert '"corrected"' in prompt
+    assert '"rewritten"' in prompt
+    assert '"alternatives"' not in prompt
+    assert '"text"' not in prompt
+    assert "Routing rules:" not in prompt
+    assert "Use the Codex model configured for this app-server session" not in prompt
+    assert len(prompt) < 600
+
+
+def test_build_ai_tools_prompt_single_text_schema_omits_rewrite_fields() -> None:
+    prompt = build_ai_tools_prompt(
+        text="explain this",
+        app_context="Safari",
+        nudge="explain",
+        render_kind="single_text",
+    )
+
+    assert '"render_kind":"single_text"' in prompt
+    assert '"text"' in prompt
+    assert '"corrected"' not in prompt
+    assert '"rewritten"' not in prompt
+    assert '"alternatives"' not in prompt
+    assert len(prompt) < 500
+
+
+def test_build_ai_tools_prompt_includes_prompt_file_contents(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "email.md"
+    prompt_file.write_text("Use concise email style.", encoding="utf-8")
+
+    prompt = build_ai_tools_prompt(
+        text="pls respond",
+        app_context="Email",
+        prompt_file=prompt_file,
+        render_kind="text_pair",
+    )
+
+    assert "Instructions:" in prompt
+    assert "Use concise email style." in prompt
+    assert "pls respond" in prompt
+    assert "skills/" not in prompt
+
+
+def test_prompt_markdown_files_do_not_embed_output_schema() -> None:
+    prompts_dir = Path(__file__).resolve().parents[1] / "prompts"
+
+    for path in prompts_dir.glob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "Output requirements" not in text
+        assert "structured output" not in text.lower()
+        assert "corrected:" not in text
+        assert "rewritten:" not in text
+        assert "alternatives:" not in text
 
 
 def test_parse_submit_args_defaults_to_sidekick_source() -> None:

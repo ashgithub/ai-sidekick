@@ -51,8 +51,10 @@ class SlackConfig(BaseModel):
 class ShortcutProfileConfig(BaseModel):
     name: str
     app_patterns: list[str] = Field(default_factory=list)
+    prompt_file: Path | None = None
     app_context: str | None = None
     nudge: str | None = None
+    render_kind: Literal["single_text", "text_pair", "alternatives"] = "text_pair"
     intent: str = "reuse"
     client_action: Literal["poll_and_replace", "wait_for_sidekick"] = "poll_and_replace"
     show_panel: bool = True
@@ -64,20 +66,45 @@ def default_shortcut_profiles() -> list[ShortcutProfileConfig]:
         ShortcutProfileConfig(
             name="slack",
             app_patterns=["slack"],
+            prompt_file=Path("prompts/slack.md"),
             app_context="Slack",
             nudge="slack",
+            render_kind="text_pair",
             client_action="wait_for_sidekick",
         ),
         ShortcutProfileConfig(
-            name="explain",
-            app_patterns=["ghostty", "iterm2", "visual studio code", "code"],
+            name="email",
+            app_patterns=["mail", "outlook"],
+            prompt_file=Path("prompts/email.md"),
+            app_context="Email",
+            nudge="email",
+            render_kind="text_pair",
+            client_action="wait_for_sidekick",
+        ),
+        ShortcutProfileConfig(
+            name="ask",
+            app_patterns=[
+                "safari",
+                "chrome",
+                "terminal",
+                "iterm2",
+                "ghostty",
+                "codex",
+                "visual studio code",
+                "code",
+            ],
+            prompt_file=Path("prompts/explain.md"),
             nudge="explain",
-            client_action="poll_and_replace",
+            render_kind="single_text",
+            client_action="wait_for_sidekick",
+            panel_mode="ask",
         ),
         ShortcutProfileConfig(
             name="default",
             app_patterns=["*"],
-            client_action="poll_and_replace",
+            prompt_file=Path("prompts/general.md"),
+            render_kind="text_pair",
+            client_action="wait_for_sidekick",
         ),
     ]
 
@@ -112,6 +139,9 @@ def load_web_panel_config(config_path: Path | None, *, repo_root: Path) -> WebPa
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     config = WebPanelConfig.model_validate(payload)
     config.slack.prompt_file = _resolve_repo_path(config.slack.prompt_file, repo_root=repo_root)
+    for profile in config.shortcuts.profiles:
+        if profile.prompt_file is not None:
+            profile.prompt_file = _resolve_repo_path(profile.prompt_file, repo_root=repo_root)
     return config
 
 

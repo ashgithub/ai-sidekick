@@ -10,43 +10,27 @@ from pathlib import Path
 from urllib import request
 
 from ai_tools.codex_bridge.config import load_web_panel_config
+from ai_tools.ingress.prompt_contract import ai_tools_schema_example, infer_ai_tools_render_kind
 
 
-def build_ai_tools_prompt(*, text: str, app_context: str | None = None, nudge: str | None = None) -> str:
+def build_ai_tools_prompt(
+    *,
+    text: str,
+    app_context: str | None = None,
+    nudge: str | None = None,
+    prompt_file: Path | None = None,
+    render_kind: str | None = None,
+) -> str:
+    expected_render_kind = render_kind or infer_ai_tools_render_kind(nudge)
     lines = [
-        "AI Tools request",
+        "AI Tools request. Do one task on the input only. Return JSON only.",
         "",
-        "Use the Codex model configured for this app-server session. Do not select or mention a separate model.",
-        "Transform the input using the requested context. Return JSON only.",
-        "",
-        "Expected JSON shape:",
-        "{",
-        '  "render_kind": "single_text | text_pair | alternatives",',
-        '  "primary_output": "string",',
-        '  "structured_output": {',
-        '    "text": "string",',
-        '    "corrected": "string",',
-        '    "rewritten": "string",',
-        '    "alternatives": [{"value": "string", "explanation": "string"}]',
-        "  }",
-        "}",
-        "",
-        "Routing rules:",
-        "- Slack/email/proofread/rewrite requests should use render_kind=text_pair with corrected and rewritten.",
-        "- Terminal/command requests should use render_kind=alternatives with one to three safe command alternatives.",
-        "- Explain/ask requests should use render_kind=single_text with text.",
-        "- primary_output should be rewritten for text_pair, the first alternative value for alternatives, or text for single_text.",
-        "",
-        "Skill instructions:",
-        "- For Slack text, follow skills/proofread-slack/SKILL.md.",
-        "- For email text, follow skills/proofread-email/SKILL.md.",
-        "- For general proofreading, follow skills/proofread-general/SKILL.md.",
-        "- For command requests, follow skills/commands/SKILL.md.",
-        "- For explanations, follow skills/explain/SKILL.md.",
-        "- For direct Q&A, follow skills/ask/SKILL.md.",
-        "- These skill files are prepared under the current Codex cwd; do not search outside the cwd for them unless a listed file is missing.",
+        "Output:",
+        ai_tools_schema_example(expected_render_kind),
         "",
     ]
+    if prompt_file is not None:
+        lines.extend(["Instructions:", prompt_file.read_text(encoding="utf-8").strip(), ""])
     if app_context:
         lines.append(f"App context: {app_context}")
     if nudge:

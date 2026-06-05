@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ai_tools.ingress.prompt_contract import ai_tools_schema_example
+
 from .models import RunRecord, RunStatus, SourceMetadata, utc_now
 from .notifications import NullNotifier
 from .protocol import CodexAppServerClient
@@ -286,12 +288,25 @@ class CodexBridgeService:
         original_text: str,
         edited_text: str,
     ) -> str:
-        return "\n".join(
+        lines = [
+            "Review edited AI Tools output. Do one task on the edited draft only. Return JSON only.",
+            "",
+            "Output:",
+            ai_tools_schema_example(run.render_kind),
+            "",
+        ]
+        if run.prompt_instructions:
+            lines.extend(["Instructions:", run.prompt_instructions, ""])
+        if run.app_context:
+            lines.append(f"App context: {run.app_context}")
+        if run.nudge:
+            lines.append(f"Nudge: {run.nudge}")
+        if run.app_context or run.nudge:
+            lines.append("")
+        if run.display_input_text:
+            lines.extend(["Original input:", run.display_input_text, ""])
+        lines.extend(
             [
-                "Review the edited draft below using the same AI Tools instructions, app context, nudge, and output format as the original run.",
-                "Return JSON only, using the same expected JSON shape from the original AI Tools request.",
-                "Do not apply the text to the source app.",
-                "",
                 f"Selected output: {selected_label}",
                 "",
                 "Original selected output:",
@@ -299,11 +314,9 @@ class CodexBridgeService:
                 "",
                 "Edited draft:",
                 edited_text.strip(),
-                "",
-                "Original AI Tools request:",
-                run.prompt,
             ]
-        ).strip()
+        )
+        return "\n".join(lines).strip()
 
     def _default_output_label(self, run: RunRecord) -> str:
         if run.render_kind == "text_pair":

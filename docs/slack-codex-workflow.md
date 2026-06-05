@@ -50,13 +50,13 @@ The panel is intentionally a compact native sidekick, not a dashboard or browser
 
 The bridge keeps only the current invocation in memory. It does not persist run history, replay transcripts, or maintain a queue file. Restarting the daemon clears the visible run state.
 
-`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, native macOS notifications, function-key toggle, Codex model/thread options, reusable AI Tools thread reset limits, Slack prompt path, and stale-source threshold. The default `codex.cwd` is `~/tmp/codex_ai_tools`, which keeps sidekick-created Codex threads out of the current project directory. On startup, the bridge exposes this repo's editable `skills/` directory as `<codex.cwd>/skills`, so Codex can read `skills/.../SKILL.md` without broad filesystem searches. The comments in that file document the current options.
+`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, native macOS notifications, function-key toggle, Codex model/thread options, reusable AI Tools thread reset limits, Slack prompt path, AI Text Tools prompt files, and stale-source threshold. The default `codex.cwd` is `~/tmp/codex_ai_tools`, which keeps sidekick-created Codex threads out of the current project directory. The comments in that file document the current options.
 
 Slack resolver stop conditions are surfaced as explicit run states. If no `@codex` message is found, the run becomes `not_found`. If the latest message is older than `slack.latest_message_max_age_minutes`, the run becomes `stale_source`.
 
 `scripts/start_web_panel_daemon.sh` starts the bridge and a hidden pywebview sidekick. Use `scripts/open_web_panel.sh` to show/focus the current invocation, or use the configured `F5` Hammerspoon hotkey to toggle it. Use `scripts/start_web_panel_daemon.sh --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
 
-For Slack and every other AI Text Tools source, edited Sidekick output is not directly applied. If you change the AI-produced text, the primary action becomes `Review changes`; Sidekick runs the edited draft back through AI, then the reviewed result can be applied to the source app.
+For Slack and every other AI Text Tools source, edited Sidekick output is not directly applied. If you change the AI-produced text, the primary action becomes `Review edits`; Sidekick runs the edited draft back through AI, then the reviewed result can be applied to the source app.
 
 If port `8765` is occupied by an older or unrelated process, `scripts/start_web_panel_daemon.sh` prints a port diagnostic and exits. Restart on the same default port with:
 

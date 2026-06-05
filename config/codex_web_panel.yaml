@@ -58,29 +58,45 @@ slack:
 
 # Hammerspoon posts only app/text/interaction to /api/shortcut. The bridge
 # resolves app-specific product policy here so new apps usually do not require
-# Lua changes.
+# Lua changes. Profiles point at plain Markdown prompt files under prompts/.
 shortcuts:
   pending_retry_after_ms: 200
   review_retry_after_ms: 500
   profiles:
     - name: slack
       app_patterns: ["slack"]
+      prompt_file: prompts/slack.md
       app_context: Slack
       nudge: slack
+      render_kind: text_pair
       intent: reuse
       client_action: wait_for_sidekick
       show_panel: true
       panel_mode: rewrite
-    - name: explain
-      app_patterns: ["ghostty", "iterm2", "visual studio code", "code"]
-      nudge: explain
+    - name: email
+      app_patterns: ["mail", "outlook"]
+      prompt_file: prompts/email.md
+      app_context: Email
+      nudge: email
+      render_kind: text_pair
       intent: reuse
-      client_action: poll_and_replace
+      client_action: wait_for_sidekick
       show_panel: true
       panel_mode: rewrite
+    - name: ask
+      app_patterns: ["safari", "chrome", "terminal", "iterm2", "ghostty", "codex", "visual studio code", "code"]
+      prompt_file: prompts/explain.md
+      nudge: explain
+      render_kind: single_text
+      intent: reuse
+      client_action: wait_for_sidekick
+      show_panel: true
+      panel_mode: ask
     - name: default
       app_patterns: ["*"]
+      prompt_file: prompts/general.md
+      render_kind: text_pair
       intent: reuse
-      client_action: poll_and_replace
+      client_action: wait_for_sidekick
       show_panel: true
       panel_mode: rewrite

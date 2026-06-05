@@ -301,10 +301,18 @@ label {
   line-height: var(--rds-line-height-body-sm);
 }
 
+.answer-heading {
+  margin: 0;
+  color: var(--rds-text-secondary);
+  font-size: var(--rds-font-size-body-sm);
+  font-weight: var(--rds-font-weight-semibold);
+  line-height: var(--rds-line-height-body-sm);
+}
+
 .response-text {
   width: 100%;
-  max-height: 52vh;
-  margin-top: var(--rds-space-sm);
+  min-height: 180px;
+  max-height: 58vh;
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--rds-text-primary);

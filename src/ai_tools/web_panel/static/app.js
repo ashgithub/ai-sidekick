@@ -47,6 +47,7 @@ let applyFeedbackTimer = null;
 let feedbackToken = 0;
 let refineSubmitting = false;
 let refineFeedbackTimer = null;
+let lastAskQuestion = "";
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -60,8 +61,23 @@ function normalizeMode(mode) {
   return mode === "ask" ? "ask" : "rewrite";
 }
 
+function transferBlankModeText(nextMode) {
+  if (nextMode === "ask" && askInputEl.value.trim() === "") {
+    askInputEl.value = selectedOutputTextareaEl.value;
+    return;
+  }
+  if (nextMode === "rewrite" && selectedOutputTextareaEl.value.trim() === "") {
+    selectedOutputTextareaEl.value = askInputEl.value;
+    selectedOutputDirty = selectedOutputTextareaEl.value.trim() !== "";
+  }
+}
+
 function setMode(mode, options = {}) {
-  currentMode = normalizeMode(mode);
+  const nextMode = normalizeMode(mode);
+  if (options.transferBlank && nextMode !== currentMode) {
+    transferBlankModeText(nextMode);
+  }
+  currentMode = nextMode;
   const askActive = currentMode === "ask";
   modeAskBtn.classList.toggle("active", askActive);
   modeRewriteBtn.classList.toggle("active", !askActive);
@@ -281,7 +297,7 @@ function setTemporaryFeedback(message, button, label, timerKey) {
       rewriteFeedbackEl.textContent = "";
     }
     button.classList.remove("success-state");
-    button.textContent = timerKey === "copy" ? "Copy text" : "Apply to source";
+    button.textContent = timerKey === "copy" ? "Copy text" : selectedOutputChanged(currentRun) ? "Review edits" : "Apply to source";
   }, 1600);
   if (timerKey === "copy") {
     copyFeedbackTimer = timer;
@@ -361,7 +377,7 @@ function renderRewritePane() {
   }
   const canUse = canSelectOutput(run) && selectedOutputTextareaEl.value.trim() !== "";
   useOutputBtn.disabled = !canUse || outputSelecting;
-  useOutputBtn.textContent = selectedOutputChanged(run) ? "Review changes" : "Apply to source";
+  useOutputBtn.textContent = selectedOutputChanged(run) ? "Review edits" : "Apply to source";
   copyOutputBtn.disabled = selectedOutputTextareaEl.value.trim() === "" || outputSelecting;
   refineDrawerEl.hidden = !canRefineRun(run);
   refineSubmitBtn.disabled = refineSubmitting || !refineInputEl.value.trim();
@@ -402,7 +418,7 @@ function setRefineFeedback(message) {
   }
   refineFeedbackTimer = setTimeout(() => {
     refineFeedbackEl.textContent = "";
-    refineSubmitBtn.textContent = "Revise draft";
+    refineSubmitBtn.textContent = "Revise with instruction";
     refineSubmitBtn.classList.remove("success-state");
   }, 1600);
 }
@@ -439,10 +455,18 @@ async function submitRefinement() {
   }
 }
 
+function isAskRun(run) {
+  return run && run.source && (run.source.source_label === "Ask" || run.panel_mode === "ask");
+}
+
 function renderAskPane() {
-  const shouldShowAnswer = currentRun && currentRun.source && currentRun.source.source_label === "Ask";
+  const shouldShowAnswer = isAskRun(currentRun);
   const answer = shouldShowAnswer ? currentRun.primary_output || currentRun.response_text || "" : "";
-  renderReadableText(askOutputViewEl, answer, currentRun && currentRun.status !== "completed" ? "Working..." : "No answer yet.");
+  const question = lastAskQuestion || (shouldShowAnswer ? currentRun.display_input_text || currentRun.prompt || "" : "");
+  if (askInputEl.value.trim() === "" && question.trim() !== "") {
+    askInputEl.value = question;
+  }
+  renderReadableText(askOutputViewEl, answer, shouldShowAnswer && currentRun.status !== "completed" ? "Working..." : "No answer yet.");
 }
 
 function renderModeContent() {
@@ -513,7 +537,8 @@ async function submitAsk() {
         intent: "new",
       }),
     });
-    askInputEl.value = "";
+    lastAskQuestion = prompt;
+    askInputEl.value = lastAskQuestion;
     await refreshRuns();
   } finally {
     askSubmitting = false;
@@ -748,8 +773,8 @@ function startEventStream() {
   return true;
 }
 
-modeRewriteBtn.addEventListener("click", () => setMode("rewrite", { persist: true }));
-modeAskBtn.addEventListener("click", () => setMode("ask", { persist: true }));
+modeRewriteBtn.addEventListener("click", () => setMode("rewrite", { persist: true, transferBlank: true }));
+modeAskBtn.addEventListener("click", () => setMode("ask", { persist: true, transferBlank: true }));
 versionRewrittenBtn.addEventListener("click", () => {
   selectedOutputKey = "rewritten";
   selectedOutputDirty = false;
@@ -774,6 +799,7 @@ refineSubmitBtn.addEventListener("click", () => submitRefinement().catch((error)
 askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => console.error(error)));
 askNewBtn.addEventListener("click", () => {
   askInputEl.value = "";
+  lastAskQuestion = "";
   renderReadableText(askOutputViewEl, "", "No answer yet.");
   askInputEl.focus();
 });

@@ -64,6 +64,11 @@ class RunRecord(BaseModel):
     response_text: str = ""
     raw_response_text: str = ""
     render_kind: str = "single_text"
+    display_input_text: str = ""
+    panel_mode: str | None = None
+    prompt_instructions: str = ""
+    app_context: str | None = None
+    nudge: str | None = None
     structured_output: dict[str, Any] | None = None
     primary_output: str = ""
     selected_output_label: str = ""

@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib import request
 
+from ai_tools.codex_bridge.config import ShortcutProfileConfig
 from ai_tools.codex_bridge.models import RunRecord, RunStatus, SourceMetadata
 from ai_tools.ingress.server import LocalIngressServer
 
@@ -28,6 +29,7 @@ class StubService:
         self.thread_keys: list[str | None] = []
         self.current_run_record = current_run
         self.panel_mode_value = "rewrite"
+        self.last_routed_run = None
 
     def submit_run(self, source: SourceMetadata, prompt: str):
         if self.submit_error is not None:
@@ -44,7 +46,8 @@ class StubService:
     ):
         self.routed_submissions.append((source, prompt, intent))
         self.thread_keys.append(thread_key)
-        return type("Run", (), {"run_id": "run-routed"})()
+        self.last_routed_run = type("Run", (), {"run_id": "run-routed"})()
+        return self.last_routed_run
 
     def panel_mode(self):
         return self.panel_mode_value
@@ -200,6 +203,27 @@ def test_ingress_server_omits_transcript_from_panel_run_snapshot() -> None:
     assert payload["run"]["run_id"] == run.run_id
     assert "transcript" not in payload["run"]
     assert payload["panel_mode"] == "rewrite"
+
+
+def test_ingress_server_serializes_run_display_input_and_panel_mode() -> None:
+    run = RunRecord.create(
+        source=SourceMetadata(source_kind="ai_tools", source_label="Safari", source_id="ai-tools-1"),
+        prompt="AI Tools request\n\nInput:\nSelected browser text",
+    )
+    run.display_input_text = "Selected browser text"
+    run.panel_mode = "ask"
+    service = StubService(current_run=run)
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        current = request.urlopen(f"http://127.0.0.1:{server.port}/api/current-run", timeout=2)
+    finally:
+        server.stop()
+
+    payload = json.loads(current.read().decode("utf-8"))
+    assert payload["run"]["display_input_text"] == "Selected browser text"
+    assert payload["run"]["panel_mode"] == "ask"
 
 
 def test_event_stream_is_not_limited_to_one_hour() -> None:
@@ -412,11 +436,63 @@ def test_shortcut_endpoint_resolves_slack_profile_to_sidekick_review_action() ->
     assert intent == "reuse"
     assert "App context: Slack" in prompt
     assert "Nudge: slack" in prompt
+    assert "professional proofreader for Slack messages" in prompt
     assert service.thread_keys == ["ai_tools:slack:slack"]
     assert service.panel_actions == ["show"]
 
 
-def test_shortcut_endpoint_resolves_terminal_profile_to_explain_poll_action() -> None:
+def test_shortcut_endpoint_resolves_email_profile_to_sidekick_review_action(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "email.md"
+    prompt_file.write_text("Use email style.", encoding="utf-8")
+    service = StubService()
+    server = LocalIngressServer(
+        service=service,
+        host="127.0.0.1",
+        port=0,
+        shortcut_profiles=[
+            ShortcutProfileConfig(
+                name="email",
+                app_patterns=["mail", "outlook"],
+                app_context="Email",
+                prompt_file=prompt_file,
+                nudge="email",
+                client_action="wait_for_sidekick",
+            ),
+            ShortcutProfileConfig(name="default", app_patterns=["*"]),
+        ],
+    )
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Mail",
+                        "text": "pls fix this email",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_label == "Mail"
+    assert "App context: Email" in prompt
+    assert "Use email style." in prompt
+    assert "pls fix this email" in prompt
+    assert intent == "reuse"
+    assert service.panel_actions == ["show"]
+
+
+def test_shortcut_endpoint_resolves_ask_surface_to_sidekick_ask_mode() -> None:
     service = StubService()
     server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
 
@@ -443,7 +519,7 @@ def test_shortcut_endpoint_resolves_terminal_profile_to_explain_poll_action() ->
     assert json.loads(response.read().decode("utf-8")) == {
         "run_id": "run-routed",
         "status": "accepted",
-        "client_action": "poll_and_replace",
+        "client_action": "wait_for_sidekick",
         "poll_url": "/api/shortcut/results/run-routed",
         "panel_visibility": "manual",
     }
@@ -452,7 +528,98 @@ def test_shortcut_endpoint_resolves_terminal_profile_to_explain_poll_action() ->
     assert intent == "reuse"
     assert "App context: Ghostty" in prompt
     assert "Nudge: explain" in prompt
-    assert service.thread_keys == ["ai_tools:explain:ghostty"]
+    assert "Explain the provided content in plain language" in prompt
+    assert service.thread_keys == ["ai_tools:ask:ghostty"]
+    assert service.panel_actions == ["show"]
+    assert service.panel_mode_value == "ask"
+
+
+def test_shortcut_endpoint_resolves_code_profile_to_sidekick_ask_mode() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Visual Studio Code",
+                        "text": "explain this snippet",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_label == "Visual Studio Code"
+    assert intent == "reuse"
+    assert "App context: Visual Studio Code" in prompt
+    assert "Nudge: explain" in prompt
+    assert service.thread_keys == ["ai_tools:ask:visual-studio-code"]
+    assert service.panel_actions == ["show"]
+    assert service.panel_mode_value == "ask"
+
+
+def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "explain.md"
+    prompt_file.write_text("Explain selected text.", encoding="utf-8")
+    service = StubService()
+    server = LocalIngressServer(
+        service=service,
+        host="127.0.0.1",
+        port=0,
+        shortcut_profiles=[
+            ShortcutProfileConfig(
+                name="browser",
+                app_patterns=["safari", "chrome"],
+                prompt_file=prompt_file,
+                nudge="explain",
+                client_action="wait_for_sidekick",
+                panel_mode="ask",
+            ),
+            ShortcutProfileConfig(name="default", app_patterns=["*"]),
+        ],
+    )
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Safari",
+                        "text": "selected web page text",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    source, prompt, intent = service.routed_submissions[0]
+    assert source.source_label == "Safari"
+    assert "Explain selected text." in prompt
+    assert "selected web page text" in prompt
+    assert intent == "reuse"
+    assert service.last_routed_run.display_input_text == "selected web page text"
+    assert service.last_routed_run.panel_mode == "ask"
+    assert service.panel_actions == ["show"]
+    assert service.panel_mode_value == "ask"
 
 
 def test_shortcut_endpoint_empty_text_opens_ask_mode_without_submitting() -> None:

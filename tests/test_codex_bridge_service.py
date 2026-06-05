@@ -206,9 +206,13 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
     run = service.submit_run(
         source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
-        prompt="AI Tools request\n\nInput:\nOriginal Slack text",
+        prompt="AI Tools request\n\nRouting rules:\n- old verbose rules\n\nInput:\nOriginal Slack text",
     )
     run.render_kind = "text_pair"
+    run.display_input_text = "Original Slack text"
+    run.prompt_instructions = "Make Slack text concise and professional."
+    run.app_context = "Slack"
+    run.nudge = "slack"
     run.structured_output = {"corrected": "Corrected text", "rewritten": "Rewritten text"}
     run.primary_output = "Rewritten text"
     run.response_text = "Rewritten text"
@@ -226,11 +230,19 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     assert len(client.thread_start_calls) == 1
     assert client.turn_start_calls[-1]["threadId"] == "thread-1"
     review_prompt = client.turn_start_calls[-1]["input"][0]["text"]
-    assert "Review the edited draft below using the same AI Tools instructions" in review_prompt
+    assert "Review edited AI Tools output. Do one task on the edited draft only. Return JSON only." in review_prompt
+    assert '"render_kind":"text_pair"' in review_prompt
+    assert "Make Slack text concise and professional." in review_prompt
+    assert "App context: Slack" in review_prompt
+    assert "Nudge: slack" in review_prompt
+    assert "Original input:" in review_prompt
+    assert "Original Slack text" in review_prompt
     assert "Original selected output:" in review_prompt
     assert "Rewritten text" in review_prompt
     assert "Edited draft:" in review_prompt
     assert "Edited Slack text" in review_prompt
+    assert "Routing rules:" not in review_prompt
+    assert "Original AI Tools request:" not in review_prompt
     assert reviewed.status is RunStatus.RUNNING
     assert reviewed.primary_output == ""
     assert reviewed.response_text == ""
