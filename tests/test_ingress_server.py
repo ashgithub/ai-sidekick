@@ -354,6 +354,43 @@ def test_ingress_server_accepts_source_neutral_invocations() -> None:
     assert intent == "continue"
 
 
+def test_ingress_server_persists_ask_mode_for_ask_invocations() -> None:
+    service = StubService()
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/invoke",
+                data=json.dumps(
+                    {
+                        "source_kind": "manual",
+                        "source_label": "Ask",
+                        "source_id": "ask-1",
+                        "prompt": "Why does the selected command fail?",
+                        "intent": "new",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-routed",
+        "status": "accepted",
+        "panel_visibility": "manual",
+    }
+    assert service.last_routed_run.display_input_text == "Why does the selected command fail?"
+    assert service.last_routed_run.panel_mode == "ask"
+    assert service.panel_actions == ["show"]
+    assert service.panel_mode_value == "ask"
+
+
 def test_ingress_server_accepts_structured_ai_tools_invocations() -> None:
     service = StubService()
     server = LocalIngressServer(service=service, host="127.0.0.1", port=0)

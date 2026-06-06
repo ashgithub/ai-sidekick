@@ -191,6 +191,7 @@ class LocalIngressServer:
                         if getattr(source, "source_label", "") == "Ask":
                             run.display_input_text = str(body.get("prompt", "")).strip()
                             run.panel_mode = "ask"
+                            outer.service.show_panel(mode="ask")
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
                             HTTPStatus.INTERNAL_SERVER_ERROR,

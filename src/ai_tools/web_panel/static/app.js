@@ -694,7 +694,8 @@ function renderRun(run) {
 }
 
 function renderPayload(payload) {
-  setMode(payload.panel_mode || currentMode);
+  const payloadMode = payload.run && payload.run.panel_mode ? payload.run.panel_mode : payload.panel_mode;
+  setMode(payloadMode || currentMode);
   renderRun(payload.run || null);
 }
 

@@ -150,6 +150,7 @@ def test_web_panel_supports_ask_mode_without_selected_text() -> None:
     assert "function isAskRun(run)" in js
     assert 'run.panel_mode === "ask"' in js
     assert "currentRun.display_input_text || currentRun.prompt" in js
+    assert "payload.run && payload.run.panel_mode ? payload.run.panel_mode : payload.panel_mode" in js
     assert 'lastAskQuestion = prompt;\n    askInputEl.value = "";' not in js
     assert 'currentMode === "ask" || currentRun.source.source_label === "Ask"' not in js
 
