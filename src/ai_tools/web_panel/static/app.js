@@ -48,6 +48,8 @@ let feedbackToken = 0;
 let refineSubmitting = false;
 let refineFeedbackTimer = null;
 let lastAskQuestion = "";
+let lastAskQuestionRunId = null;
+let askInputRunId = null;
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -484,6 +486,13 @@ function askQuestionForRun(run) {
   return "";
 }
 
+function submittedAskQuestionForRun(run) {
+  if (!run) {
+    return "";
+  }
+  return run.run_id === lastAskQuestionRunId ? lastAskQuestion : "";
+}
+
 function askAnswerForRun(run) {
   if (!run || run.status !== "completed") {
     return "";
@@ -498,10 +507,13 @@ function askAnswerForRun(run) {
 function renderAskPane() {
   const shouldShowAnswer = isAskRun(currentRun);
   const answer = shouldShowAnswer ? askAnswerForRun(currentRun) : "";
-  const question = lastAskQuestion || (shouldShowAnswer ? askQuestionForRun(currentRun) : "");
-  if (askInputEl.value.trim() === "" && question.trim() !== "") {
+  const runId = shouldShowAnswer && currentRun ? currentRun.run_id : null;
+  const question = submittedAskQuestionForRun(currentRun) || (shouldShowAnswer ? askQuestionForRun(currentRun) : "");
+  const shouldReplaceQuestion = question.trim() !== "" && (askInputEl.value.trim() === "" || askInputRunId !== runId);
+  if (shouldReplaceQuestion) {
     askInputEl.value = question;
   }
+  askInputRunId = runId;
   renderReadableText(askOutputViewEl, answer, shouldShowAnswer && currentRun.status !== "completed" ? "Working..." : "No answer yet.");
 }
 
@@ -562,7 +574,7 @@ async function submitAsk() {
   askSubmitBtn.disabled = true;
   askNewBtn.disabled = true;
   try {
-    await fetchJson("/api/invoke", {
+    const result = await fetchJson("/api/invoke", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -574,7 +586,9 @@ async function submitAsk() {
       }),
     });
     lastAskQuestion = prompt;
-    askInputEl.value = lastAskQuestion;
+    lastAskQuestionRunId = result.run_id;
+    askInputRunId = result.run_id;
+    askInputEl.value = prompt;
     await refreshRuns();
   } finally {
     askSubmitting = false;
@@ -837,6 +851,8 @@ askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => consol
 askNewBtn.addEventListener("click", () => {
   askInputEl.value = "";
   lastAskQuestion = "";
+  lastAskQuestionRunId = null;
+  askInputRunId = null;
   renderReadableText(askOutputViewEl, "", "No answer yet.");
   askInputEl.focus();
 });
