@@ -15,6 +15,7 @@ local last_status_at = 0
 local status_alert_durations = {
     cancelled = 1.8,
 }
+local active_shortcut_token = 0
 
 local terminal_config = {  -- Shared config for terminal-like apps (iTerm2, Ghostty, Code)
     copy = function()
@@ -269,23 +270,45 @@ local function build_window_args(trigger_window, trigger_app)
     )
 end
 
-local function restore_clipboard_later(originalClipboard)
+local function next_shortcut_token()
+    active_shortcut_token = active_shortcut_token + 1
+    return active_shortcut_token
+end
+
+local function is_active_shortcut(shortcut_token)
+    return shortcut_token == active_shortcut_token
+end
+
+local function is_connection_failure(status)
+    local code = tonumber(status)
+    return code == nil or code <= 0
+end
+
+local function restore_clipboard_later(originalClipboard, shortcut_token)
     hs.timer.doAfter(0.5, function()
-        hs.pasteboard.setContents(originalClipboard)
+        if shortcut_token and not is_active_shortcut(shortcut_token) then
+            return
+        end
+        if originalClipboard then
+            hs.pasteboard.setContents(originalClipboard)
+        end
     end)
 end
 
-local function paste_ai_tools_output(trigger_app, config, originalClipboard, output)
+local function paste_ai_tools_output(trigger_app, config, originalClipboard, output, shortcut_token)
     hs.pasteboard.setContents(output)
     if trigger_app then
         trigger_app:activate()
     end
     hs.timer.usleep(200000)
     config.paste()
-    restore_clipboard_later(originalClipboard)
+    restore_clipboard_later(originalClipboard, shortcut_token)
 end
 
-local function restore_clipboard_now(originalClipboard)
+local function restore_clipboard_now(originalClipboard, shortcut_token)
+    if shortcut_token and not is_active_shortcut(shortcut_token) then
+        return
+    end
     if originalClipboard then
         hs.pasteboard.setContents(originalClipboard)
     end
@@ -307,11 +330,19 @@ local function shortcut_result_url(urls, response)
     return nil
 end
 
-local function poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, review_notice_shown)
+local function poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, shortcut_token, review_notice_shown)
     hs.http.asyncGet(url, {}, function(status, body, headers)
+        if not is_active_shortcut(shortcut_token) then
+            return
+        end
+
         if status ~= 200 then
-            show_status("error", appName, "Sidekick result check failed.", true)
-            restore_clipboard_now(originalClipboard)
+            if is_connection_failure(status) then
+                log.i("Sidekick result polling stopped for " .. tostring(appName) .. ": status=" .. tostring(status) .. " body=" .. tostring(body))
+            else
+                log.e("Sidekick result polling stopped for " .. tostring(appName) .. ": status=" .. tostring(status) .. " body=" .. tostring(body))
+            end
+            restore_clipboard_now(originalClipboard, shortcut_token)
             return
         end
 
@@ -321,10 +352,10 @@ local function poll_shortcut_result(url, trigger_app, appName, config, originalC
             local output = result["output"] or ""
             if output == "" then
                 show_status("cancelled", appName)
-                restore_clipboard_now(originalClipboard)
+                restore_clipboard_now(originalClipboard, shortcut_token)
                 return
             end
-            paste_ai_tools_output(trigger_app, config, originalClipboard, output)
+            paste_ai_tools_output(trigger_app, config, originalClipboard, output, shortcut_token)
             return
         end
 
@@ -337,18 +368,21 @@ local function poll_shortcut_result(url, trigger_app, appName, config, originalC
             end
             local retry_after_ms = tonumber(result["retry_after_ms"] or 200) or 200
             hs.timer.doAfter(retry_after_ms / 1000, function()
-                poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, notice_shown)
+                if not is_active_shortcut(shortcut_token) then
+                    return
+                end
+                poll_shortcut_result(url, trigger_app, appName, config, originalClipboard, shortcut_token, notice_shown)
             end)
             return
         end
 
         local message = result["message"] or "Sidekick shortcut failed."
         show_status("error", appName, message, true)
-        restore_clipboard_now(originalClipboard)
+        restore_clipboard_now(originalClipboard, shortcut_token)
     end)
 end
 
-local function submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text)
+local function submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text, shortcut_token)
     local payload = {
         ["app"] = appName,
         ["text"] = text,
@@ -357,10 +391,18 @@ local function submit_shortcut(urls, trigger_app, appName, config, originalClipb
 
     show_status("queued", appName)
     hs.http.asyncPost(urls.shortcut, hs.json.encode(payload), { ["Content-Type"] = "application/json" }, function(status, body, headers)
+        if not is_active_shortcut(shortcut_token) then
+            return
+        end
+
         if status ~= 200 then
-            show_status("error", appName, "Codex sidekick did not accept the shortcut.", true)
+            if is_connection_failure(status) then
+                log.i("Sidekick shortcut submit stopped for " .. tostring(appName) .. ": status=" .. tostring(status))
+            else
+                show_status("error", appName, "Codex sidekick did not accept the shortcut.", true)
+            end
             log.e("Shortcut submit failed: status=" .. tostring(status) .. " body=" .. tostring(body))
-            restore_clipboard_now(originalClipboard)
+            restore_clipboard_now(originalClipboard, shortcut_token)
             return
         end
 
@@ -368,24 +410,26 @@ local function submit_shortcut(urls, trigger_app, appName, config, originalClipb
         local client_action = response["client_action"] or ""
         if client_action == "show_sidekick" then
             show_status("queued", appName, "Ask in the sidekick.")
-            restore_clipboard_now(originalClipboard)
+            restore_clipboard_now(originalClipboard, shortcut_token)
             return
         end
 
         local result_url = shortcut_result_url(urls, response)
         if not result_url then
             show_status("error", appName, "Sidekick did not return a shortcut result URL.", true)
-            restore_clipboard_now(originalClipboard)
+            restore_clipboard_now(originalClipboard, shortcut_token)
             return
         end
         if client_action == "wait_for_sidekick" then
             result_url = result_url .. "?client_action=wait_for_sidekick"
         end
-        poll_shortcut_result(result_url, trigger_app, appName, config, originalClipboard)
+        poll_shortcut_result(result_url, trigger_app, appName, config, originalClipboard, shortcut_token)
     end)
 end
 
 local function run_processing(trigger_app, appName, config)
+    local shortcut_token = next_shortcut_token()
+
     -- Save original clipboard
     local originalClipboard = hs.pasteboard.getContents()
 
@@ -397,21 +441,23 @@ local function run_processing(trigger_app, appName, config)
     if ai_tools_sidekick_enabled then
         local urls = sidekick_urls()
         hs.http.asyncGet(urls.ready, {}, function(status, body, headers)
-            if status ~= 200 then
-                hs.alert.show("Codex sidekick is not running\nStart: " .. web_panel_start_script .. " --restart", 6)
-                log.e("AI Tools sidekick bridge unavailable: status=" .. tostring(status) .. " body=" .. tostring(body))
-                if originalClipboard then
-                    hs.pasteboard.setContents(originalClipboard)
-                end
+            if not is_active_shortcut(shortcut_token) then
                 return
             end
 
-            submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text or "")
+            if status ~= 200 then
+                hs.alert.show("Codex sidekick is not running\nStart: " .. web_panel_start_script .. " --restart", 6)
+                log.e("AI Tools sidekick bridge unavailable: status=" .. tostring(status) .. " body=" .. tostring(body))
+                restore_clipboard_now(originalClipboard, shortcut_token)
+                return
+            end
+
+            submit_shortcut(urls, trigger_app, appName, config, originalClipboard, text or "", shortcut_token)
         end)
         return
     end
     show_status("error", appName, "Codex sidekick shortcut is disabled.", true)
-    restore_clipboard_now(originalClipboard)
+    restore_clipboard_now(originalClipboard, shortcut_token)
 end
 
 function processAppText()

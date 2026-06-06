@@ -31,3 +31,18 @@ def test_hammerspoon_ai_tools_shortcut_posts_minimal_payload_to_shortcut_endpoin
     assert "<<'EOF'" not in lua
     assert "/private/tmp/ai_tools-shortcut-web-panel-poc" not in lua
     assert "clients/multi_tool_client.py" not in lua
+
+
+def test_hammerspoon_shortcut_polling_ignores_stale_callbacks_and_closed_server() -> None:
+    lua = (ROOT / "init.lua").read_text(encoding="utf-8")
+
+    assert "local active_shortcut_token = 0" in lua
+    assert "local function next_shortcut_token()" in lua
+    assert "local function is_active_shortcut(shortcut_token)" in lua
+    assert "local function is_connection_failure(status)" in lua
+    assert "if not is_active_shortcut(shortcut_token) then" in lua
+    assert "restore_clipboard_later(originalClipboard, shortcut_token)" in lua
+    assert "restore_clipboard_now(originalClipboard, shortcut_token)" in lua
+    assert "poll_shortcut_result(result_url, trigger_app, appName, config, originalClipboard, shortcut_token)" in lua
+    assert "log.i(\"Sidekick result polling stopped" in lua
+    assert 'show_status("error", appName, "Sidekick result check failed.", true)' not in lua
