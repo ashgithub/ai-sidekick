@@ -342,11 +342,11 @@ function selectedOutputChanged(run) {
 }
 
 function canSelectOutput(run) {
-  return run && run.source && run.source.source_kind === "ai_tools" && run.status === "completed";
+  return run && run.source && run.source.source_kind === "ai_tools" && run.status === "completed" && run.panel_mode !== "ask";
 }
 
 function canRefineRun(run) {
-  return run && run.thread_id && run.source && run.source.source_kind === "ai_tools";
+  return run && run.thread_id && run.source && run.source.source_kind === "ai_tools" && run.panel_mode !== "ask";
 }
 
 function renderVersionTabs(run) {
@@ -459,10 +459,46 @@ function isAskRun(run) {
   return run && run.source && (run.source.source_label === "Ask" || run.panel_mode === "ask");
 }
 
+function extractAiToolsInput(prompt) {
+  const marker = "\nInput:";
+  const markerIndex = prompt.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return "";
+  }
+  return prompt.slice(markerIndex + marker.length).trim();
+}
+
+function askQuestionForRun(run) {
+  if (!run) {
+    return "";
+  }
+  if (run.display_input_text) {
+    return run.display_input_text;
+  }
+  if (run.source && run.source.source_label === "Ask") {
+    return run.prompt || "";
+  }
+  if (run.panel_mode === "ask") {
+    return extractAiToolsInput(run.prompt || "");
+  }
+  return "";
+}
+
+function askAnswerForRun(run) {
+  if (!run || run.status !== "completed") {
+    return "";
+  }
+  const structured = run.structured_output || {};
+  if (typeof structured.text === "string" && structured.text.trim() !== "") {
+    return structured.text;
+  }
+  return run.primary_output || run.response_text || "";
+}
+
 function renderAskPane() {
   const shouldShowAnswer = isAskRun(currentRun);
-  const answer = shouldShowAnswer ? currentRun.primary_output || currentRun.response_text || "" : "";
-  const question = lastAskQuestion || (shouldShowAnswer ? currentRun.display_input_text || currentRun.prompt || "" : "");
+  const answer = shouldShowAnswer ? askAnswerForRun(currentRun) : "";
+  const question = lastAskQuestion || (shouldShowAnswer ? askQuestionForRun(currentRun) : "");
   if (askInputEl.value.trim() === "" && question.trim() !== "") {
     askInputEl.value = question;
   }

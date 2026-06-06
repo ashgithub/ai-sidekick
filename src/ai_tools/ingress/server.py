@@ -189,8 +189,11 @@ class LocalIngressServer:
                             intent=str(body.get("intent", "new")).strip() or "new",
                         )
                         if getattr(source, "source_label", "") == "Ask":
-                            run.display_input_text = str(body.get("prompt", "")).strip()
-                            run.panel_mode = "ask"
+                            run = outer._update_run_metadata(
+                                run,
+                                display_input_text=str(body.get("prompt", "")).strip(),
+                                panel_mode="ask",
+                            )
                             outer.service.show_panel(mode="ask")
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
@@ -217,11 +220,13 @@ class LocalIngressServer:
                             source_label=str(body.get("source_label", "AI Tools")).strip() or "AI Tools",
                             source_id=str(body.get("source_id", "ai-tools")).strip() or "ai-tools",
                         )
+                        render_kind = infer_ai_tools_render_kind(nudge)
+                        panel_mode = "ask" if render_kind == "single_text" else "rewrite"
                         prompt = build_ai_tools_prompt(
                             text=str(body.get("text", "")).strip(),
                             app_context=app_context,
                             nudge=nudge,
-                            render_kind=infer_ai_tools_render_kind(nudge),
+                            render_kind=render_kind,
                         )
                         run = outer.service.submit_or_route(
                             source=source,
@@ -233,10 +238,14 @@ class LocalIngressServer:
                                 nudge=nudge,
                             ),
                         )
-                        run.render_kind = infer_ai_tools_render_kind(nudge)
-                        run.display_input_text = str(body.get("text", "")).strip()
-                        run.app_context = app_context
-                        run.nudge = nudge
+                        run = outer._update_run_metadata(
+                            run,
+                            render_kind=render_kind,
+                            display_input_text=str(body.get("text", "")).strip(),
+                            panel_mode=panel_mode,
+                            app_context=app_context,
+                            nudge=nudge,
+                        )
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
                             HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -294,14 +303,17 @@ class LocalIngressServer:
                                 profile_name=profile.name,
                             ),
                         )
-                        run.render_kind = profile.render_kind
-                        run.display_input_text = text
-                        run.panel_mode = profile.panel_mode
-                        run.prompt_instructions = (
-                            profile.prompt_file.read_text(encoding="utf-8").strip() if profile.prompt_file else ""
+                        run = outer._update_run_metadata(
+                            run,
+                            render_kind=profile.render_kind,
+                            display_input_text=text,
+                            panel_mode=profile.panel_mode,
+                            prompt_instructions=(
+                                profile.prompt_file.read_text(encoding="utf-8").strip() if profile.prompt_file else ""
+                            ),
+                            app_context=app_context,
+                            nudge=profile.nudge,
                         )
-                        run.app_context = app_context
-                        run.nudge = profile.nudge
                         if profile.show_panel:
                             outer.service.show_panel(mode=profile.panel_mode)
                     except Exception as exc:  # noqa: BLE001
@@ -475,6 +487,15 @@ class LocalIngressServer:
                 self.wfile.write(body)
 
         return Handler
+
+    def _update_run_metadata(self, run: Any, **metadata: Any) -> Any:
+        for field, value in metadata.items():
+            setattr(run, field, value)
+        updater = getattr(self.service, "update_run_metadata", None)
+        run_id = getattr(run, "run_id", None)
+        if callable(updater) and run_id:
+            return updater(str(run_id), **metadata)
+        return run
 
     def _ai_tools_thread_key(
         self,

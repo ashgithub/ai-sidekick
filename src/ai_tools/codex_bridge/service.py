@@ -396,6 +396,14 @@ class CodexBridgeService:
     def get_run(self, run_id: str) -> RunRecord | None:
         return self.store.get_run(run_id)
 
+    def update_run_metadata(self, run_id: str, **metadata: Any) -> RunRecord:
+        run = self._require_run(run_id)
+        for field, value in metadata.items():
+            if hasattr(run, field):
+                setattr(run, field, value)
+        self.store.upsert(run)
+        return run
+
     def approve_run(self, run_id: str) -> RunRecord:
         run = self._require_run(run_id)
         if not run.pending_request_id:

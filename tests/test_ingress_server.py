@@ -5,9 +5,31 @@ from urllib import request
 
 from ai_tools.codex_bridge.config import ShortcutProfileConfig
 from ai_tools.codex_bridge.models import RunRecord, RunStatus, SourceMetadata
+from ai_tools.codex_bridge.service import CodexBridgeService
+from ai_tools.codex_bridge.state import ActiveRunStateStore
 from ai_tools.ingress.server import LocalIngressServer
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class IngressFakeClient:
+    def __init__(self) -> None:
+        self.thread_start_calls: list[dict] = []
+        self.turn_start_calls: list[dict] = []
+
+    def ensure_started(self) -> None:
+        return None
+
+    def thread_start(self, params: dict) -> dict:
+        self.thread_start_calls.append(params)
+        return {"thread": {"id": f"thread-{len(self.thread_start_calls)}"}}
+
+    def turn_start(self, params: dict) -> dict:
+        self.turn_start_calls.append(params)
+        return {"turnId": f"turn-{len(self.turn_start_calls)}"}
+
+    def validate_command(self) -> tuple[bool, str]:
+        return True, "codex command is executable"
 
 
 class StubService:
@@ -436,6 +458,52 @@ def test_ingress_server_accepts_structured_ai_tools_invocations() -> None:
     assert service.thread_keys == ["ai_tools:slack:slack"]
 
 
+def test_ai_tools_endpoint_persists_explain_metadata_to_real_service_current_run(tmp_path: Path) -> None:
+    service = CodexBridgeService(
+        client=IngressFakeClient(),
+        store=ActiveRunStateStore(),
+        cwd=tmp_path,
+    )
+    server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/ai-tools",
+                data=json.dumps(
+                    {
+                        "source_kind": "ai_tools",
+                        "source_label": "Safari",
+                        "source_id": "ai-tools-safari",
+                        "text": "selected browser question",
+                        "app_context": "Safari",
+                        "nudge": "explain",
+                        "intent": "reuse",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+        current = request.urlopen(f"http://127.0.0.1:{server.port}/api/current-run", timeout=2)
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": service.current_run().run_id,
+        "status": "accepted",
+        "panel_visibility": "manual",
+    }
+    payload = json.loads(current.read().decode("utf-8"))
+    assert payload["run"]["display_input_text"] == "selected browser question"
+    assert payload["run"]["panel_mode"] == "ask"
+    assert payload["run"]["render_kind"] == "single_text"
+    assert payload["run"]["app_context"] == "Safari"
+    assert payload["run"]["nudge"] == "explain"
+
+
 def test_shortcut_endpoint_resolves_slack_profile_to_sidekick_review_action() -> None:
     service = StubService()
     server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
@@ -657,6 +725,64 @@ def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) 
     assert service.last_routed_run.panel_mode == "ask"
     assert service.panel_actions == ["show"]
     assert service.panel_mode_value == "ask"
+
+
+def test_shortcut_endpoint_persists_ask_metadata_to_real_service_current_run(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "explain.md"
+    prompt_file.write_text("Explain selected text.", encoding="utf-8")
+    service = CodexBridgeService(
+        client=IngressFakeClient(),
+        store=ActiveRunStateStore(),
+        cwd=tmp_path,
+    )
+    server = LocalIngressServer(
+        service=service,
+        host="127.0.0.1",
+        port=0,
+        shortcut_profiles=[
+            ShortcutProfileConfig(
+                name="browser",
+                app_patterns=["safari", "chrome"],
+                prompt_file=prompt_file,
+                nudge="explain",
+                render_kind="single_text",
+                client_action="wait_for_sidekick",
+                panel_mode="ask",
+            ),
+            ShortcutProfileConfig(name="default", app_patterns=["*"]),
+        ],
+    )
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/shortcut",
+                data=json.dumps(
+                    {
+                        "app": "Safari",
+                        "text": "selected browser question",
+                        "interaction": "replace-selection",
+                    }
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+        current = request.urlopen(f"http://127.0.0.1:{server.port}/api/current-run", timeout=2)
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    payload = json.loads(current.read().decode("utf-8"))
+    assert payload["panel_mode"] == "ask"
+    assert payload["run"]["display_input_text"] == "selected browser question"
+    assert payload["run"]["panel_mode"] == "ask"
+    assert payload["run"]["render_kind"] == "single_text"
+    assert payload["run"]["prompt_instructions"] == "Explain selected text."
+    assert payload["run"]["app_context"] == "Safari"
+    assert payload["run"]["nudge"] == "explain"
 
 
 def test_shortcut_endpoint_empty_text_opens_ask_mode_without_submitting() -> None:
