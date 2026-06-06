@@ -337,11 +337,7 @@ local function poll_shortcut_result(url, trigger_app, appName, config, originalC
         end
 
         if status ~= 200 then
-            if is_connection_failure(status) then
-                log.i("Sidekick result polling stopped for " .. tostring(appName) .. ": status=" .. tostring(status) .. " body=" .. tostring(body))
-            else
-                log.e("Sidekick result polling stopped for " .. tostring(appName) .. ": status=" .. tostring(status) .. " body=" .. tostring(body))
-            end
+            log.i("Sidekick result polling stopped for " .. tostring(appName) .. ": status=" .. tostring(status) .. " body=" .. tostring(body))
             restore_clipboard_now(originalClipboard, shortcut_token)
             return
         end
@@ -427,9 +423,7 @@ local function submit_shortcut(urls, trigger_app, appName, config, originalClipb
     end)
 end
 
-local function run_processing(trigger_app, appName, config)
-    local shortcut_token = next_shortcut_token()
-
+local function run_processing(trigger_app, appName, config, shortcut_token)
     -- Save original clipboard
     local originalClipboard = hs.pasteboard.getContents()
 
@@ -465,9 +459,10 @@ function processAppText()
     local trigger_app = (trigger_window and trigger_window:application()) or hs.application.frontmostApplication()
     local appName = trigger_app and trigger_app:name() or ""
     local config = app_configs[appName] or app_configs["default"]
+    local shortcut_token = next_shortcut_token()
 
     hs.timer.doAfter(0.2, function()
-        run_processing(trigger_app, appName, config)
+        run_processing(trigger_app, appName, config, shortcut_token)
     end)
 end
 

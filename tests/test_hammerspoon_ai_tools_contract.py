@@ -44,5 +44,10 @@ def test_hammerspoon_shortcut_polling_ignores_stale_callbacks_and_closed_server(
     assert "restore_clipboard_later(originalClipboard, shortcut_token)" in lua
     assert "restore_clipboard_now(originalClipboard, shortcut_token)" in lua
     assert "poll_shortcut_result(result_url, trigger_app, appName, config, originalClipboard, shortcut_token)" in lua
+    assert "local function run_processing(trigger_app, appName, config, shortcut_token)" in lua
+    assert "function processAppText()" in lua
+    assert "local shortcut_token = next_shortcut_token()\n\n    hs.timer.doAfter" in lua
+    assert "run_processing(trigger_app, appName, config, shortcut_token)" in lua
     assert "log.i(\"Sidekick result polling stopped" in lua
+    assert "log.e(\"Sidekick result polling stopped" not in lua
     assert 'show_status("error", appName, "Sidekick result check failed.", true)' not in lua
