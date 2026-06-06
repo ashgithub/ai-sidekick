@@ -624,7 +624,7 @@ def test_shortcut_endpoint_resolves_ask_surface_to_sidekick_ask_mode() -> None:
     assert json.loads(response.read().decode("utf-8")) == {
         "run_id": "run-routed",
         "status": "accepted",
-        "client_action": "wait_for_sidekick",
+        "client_action": "show_sidekick",
         "poll_url": "/api/shortcut/results/run-routed",
         "panel_visibility": "manual",
     }
@@ -663,7 +663,7 @@ def test_shortcut_endpoint_resolves_code_profile_to_sidekick_ask_mode() -> None:
     finally:
         server.stop()
 
-    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "show_sidekick"
     source, prompt, intent = service.routed_submissions[0]
     assert source.source_label == "Visual Studio Code"
     assert intent == "reuse"
@@ -675,7 +675,7 @@ def test_shortcut_endpoint_resolves_code_profile_to_sidekick_ask_mode() -> None:
 
 
 def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) -> None:
-    prompt_file = tmp_path / "explain.md"
+    prompt_file = tmp_path / "ask.md"
     prompt_file.write_text("Explain selected text.", encoding="utf-8")
     service = StubService()
     server = LocalIngressServer(
@@ -688,7 +688,7 @@ def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) 
                 app_patterns=["safari", "chrome"],
                 prompt_file=prompt_file,
                 nudge="explain",
-                client_action="wait_for_sidekick",
+                client_action="show_sidekick",
                 panel_mode="ask",
             ),
             ShortcutProfileConfig(name="default", app_patterns=["*"]),
@@ -715,7 +715,7 @@ def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) 
     finally:
         server.stop()
 
-    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "show_sidekick"
     source, prompt, intent = service.routed_submissions[0]
     assert source.source_label == "Safari"
     assert "Explain selected text." in prompt
@@ -728,7 +728,7 @@ def test_shortcut_endpoint_resolves_browser_profile_to_ask_mode(tmp_path: Path) 
 
 
 def test_shortcut_endpoint_persists_ask_metadata_to_real_service_current_run(tmp_path: Path) -> None:
-    prompt_file = tmp_path / "explain.md"
+    prompt_file = tmp_path / "ask.md"
     prompt_file.write_text("Explain selected text.", encoding="utf-8")
     service = CodexBridgeService(
         client=IngressFakeClient(),
@@ -746,7 +746,7 @@ def test_shortcut_endpoint_persists_ask_metadata_to_real_service_current_run(tmp
                 prompt_file=prompt_file,
                 nudge="explain",
                 render_kind="single_text",
-                client_action="wait_for_sidekick",
+                client_action="show_sidekick",
                 panel_mode="ask",
             ),
             ShortcutProfileConfig(name="default", app_patterns=["*"]),
@@ -774,7 +774,7 @@ def test_shortcut_endpoint_persists_ask_metadata_to_real_service_current_run(tmp
     finally:
         server.stop()
 
-    assert json.loads(response.read().decode("utf-8"))["client_action"] == "wait_for_sidekick"
+    assert json.loads(response.read().decode("utf-8"))["client_action"] == "show_sidekick"
     payload = json.loads(current.read().decode("utf-8"))
     assert payload["panel_mode"] == "ask"
     assert payload["run"]["display_input_text"] == "selected browser question"

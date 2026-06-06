@@ -56,7 +56,7 @@ class ShortcutProfileConfig(BaseModel):
     nudge: str | None = None
     render_kind: Literal["single_text", "text_pair", "alternatives"] = "text_pair"
     intent: str = "reuse"
-    client_action: Literal["poll_and_replace", "wait_for_sidekick"] = "poll_and_replace"
+    client_action: Literal["poll_and_replace", "wait_for_sidekick", "show_sidekick"] = "poll_and_replace"
     show_panel: bool = True
     panel_mode: Literal["ask", "rewrite"] = "rewrite"
 
@@ -93,10 +93,10 @@ def default_shortcut_profiles() -> list[ShortcutProfileConfig]:
                 "visual studio code",
                 "code",
             ],
-            prompt_file=Path("prompts/explain.md"),
+            prompt_file=Path("prompts/ask.md"),
             nudge="explain",
             render_kind="single_text",
-            client_action="wait_for_sidekick",
+            client_action="show_sidekick",
             panel_mode="ask",
         ),
         ShortcutProfileConfig(

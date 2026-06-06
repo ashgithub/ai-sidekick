@@ -47,9 +47,11 @@ let applyFeedbackTimer = null;
 let feedbackToken = 0;
 let refineSubmitting = false;
 let refineFeedbackTimer = null;
-let lastAskQuestion = "";
-let lastAskQuestionRunId = null;
-let askInputRunId = null;
+const askDraftState = {
+  submittedQuestion: "",
+  submittedQuestionRunId: null,
+  inputRunId: null,
+};
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -490,7 +492,7 @@ function submittedAskQuestionForRun(run) {
   if (!run) {
     return "";
   }
-  return run.run_id === lastAskQuestionRunId ? lastAskQuestion : "";
+  return run.run_id === askDraftState.submittedQuestionRunId ? askDraftState.submittedQuestion : "";
 }
 
 function askAnswerForRun(run) {
@@ -509,11 +511,11 @@ function renderAskPane() {
   const answer = shouldShowAnswer ? askAnswerForRun(currentRun) : "";
   const runId = shouldShowAnswer && currentRun ? currentRun.run_id : null;
   const question = submittedAskQuestionForRun(currentRun) || (shouldShowAnswer ? askQuestionForRun(currentRun) : "");
-  const shouldReplaceQuestion = question.trim() !== "" && (askInputEl.value.trim() === "" || askInputRunId !== runId);
+  const shouldReplaceQuestion = question.trim() !== "" && (askInputEl.value.trim() === "" || askDraftState.inputRunId !== runId);
   if (shouldReplaceQuestion) {
     askInputEl.value = question;
   }
-  askInputRunId = runId;
+  askDraftState.inputRunId = runId;
   renderReadableText(askOutputViewEl, answer, shouldShowAnswer && currentRun.status !== "completed" ? "Working..." : "No answer yet.");
 }
 
@@ -585,9 +587,9 @@ async function submitAsk() {
         intent: "new",
       }),
     });
-    lastAskQuestion = prompt;
-    lastAskQuestionRunId = result.run_id;
-    askInputRunId = result.run_id;
+    askDraftState.submittedQuestion = prompt;
+    askDraftState.submittedQuestionRunId = result.run_id;
+    askDraftState.inputRunId = result.run_id;
     askInputEl.value = prompt;
     await refreshRuns();
   } finally {
@@ -850,9 +852,9 @@ refineSubmitBtn.addEventListener("click", () => submitRefinement().catch((error)
 askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => console.error(error)));
 askNewBtn.addEventListener("click", () => {
   askInputEl.value = "";
-  lastAskQuestion = "";
-  lastAskQuestionRunId = null;
-  askInputRunId = null;
+  askDraftState.submittedQuestion = "";
+  askDraftState.submittedQuestionRunId = null;
+  askDraftState.inputRunId = null;
   renderReadableText(askOutputViewEl, "", "No answer yet.");
   askInputEl.focus();
 });

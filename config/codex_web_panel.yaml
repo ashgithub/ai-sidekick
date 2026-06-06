@@ -85,11 +85,11 @@ shortcuts:
       panel_mode: rewrite
     - name: ask
       app_patterns: ["safari", "chrome", "terminal", "iterm2", "ghostty", "codex", "visual studio code", "code"]
-      prompt_file: prompts/explain.md
+      prompt_file: prompts/ask.md
       nudge: explain
       render_kind: single_text
       intent: reuse
-      client_action: wait_for_sidekick
+      client_action: show_sidekick
       show_panel: true
       panel_mode: ask
     - name: default

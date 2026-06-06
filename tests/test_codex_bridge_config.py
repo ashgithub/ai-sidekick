@@ -37,9 +37,9 @@ shortcuts:
   profiles:
     - name: custom-terminal
       app_patterns: ["Warp"]
-      prompt_file: prompts/explain.md
+      prompt_file: prompts/ask.md
       nudge: explain
-      client_action: poll_and_replace
+      client_action: show_sidekick
     - name: default
       app_patterns: ["*"]
       client_action: poll_and_replace
@@ -64,9 +64,9 @@ shortcuts:
     assert config.shortcuts.review_retry_after_ms == 750
     assert config.shortcuts.profiles[0].name == "custom-terminal"
     assert config.shortcuts.profiles[0].app_patterns == ["Warp"]
-    assert config.shortcuts.profiles[0].prompt_file == tmp_path / "prompts" / "explain.md"
+    assert config.shortcuts.profiles[0].prompt_file == tmp_path / "prompts" / "ask.md"
     assert config.shortcuts.profiles[0].nudge == "explain"
-    assert config.shortcuts.profiles[0].client_action == "poll_and_replace"
+    assert config.shortcuts.profiles[0].client_action == "show_sidekick"
 
 
 def test_load_web_panel_config_uses_defaults() -> None:
@@ -110,9 +110,9 @@ def test_load_web_panel_config_uses_defaults() -> None:
         "visual studio code",
         "code",
     ]
-    assert config.shortcuts.profiles[2].prompt_file == Path("/tmp/repo/prompts/explain.md")
+    assert config.shortcuts.profiles[2].prompt_file == Path("/tmp/repo/prompts/ask.md")
     assert config.shortcuts.profiles[2].render_kind == "single_text"
-    assert config.shortcuts.profiles[2].client_action == "wait_for_sidekick"
+    assert config.shortcuts.profiles[2].client_action == "show_sidekick"
     assert config.shortcuts.profiles[2].show_panel is True
     assert config.shortcuts.profiles[2].panel_mode == "ask"
     assert config.shortcuts.profiles[3].prompt_file == Path("/tmp/repo/prompts/general.md")

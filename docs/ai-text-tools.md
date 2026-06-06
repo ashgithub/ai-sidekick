@@ -21,7 +21,7 @@ Codex threads use `config/codex_web_panel.yaml -> codex.cwd`. The default is `~/
 
 - Slack uses `prompts/slack.md`, opens Rewrite mode, and waits for review/apply.
 - Mail and Outlook use `prompts/email.md`, open Rewrite mode, and wait for review/apply.
-- Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code use `prompts/explain.md`, open Ask mode, and are intended for explain/copy.
+- Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code use `prompts/ask.md`, open Ask mode, and are intended for explain/copy.
 - The default profile uses `prompts/general.md`, opens Rewrite mode, and waits for review/apply.
 
 ## Output Schemas

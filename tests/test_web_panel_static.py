@@ -145,13 +145,13 @@ def test_web_panel_supports_ask_mode_without_selected_text() -> None:
     assert "Ask a question without selecting text first." in html
     assert 'source_label: "Ask"' in js
     assert 'source_kind: "manual"' in js
-    assert "lastAskQuestion" in js
-    assert "lastAskQuestionRunId" in js
-    assert "askInputRunId" in js
+    assert "askDraftState" in js
+    assert "submittedQuestionRunId" in js
+    assert "inputRunId" in js
     assert "function submittedAskQuestionForRun(run)" in js
-    assert "run.run_id === lastAskQuestionRunId ? lastAskQuestion : \"\"" in js
-    assert "askInputRunId !== runId" in js
-    assert "lastAskQuestionRunId = result.run_id" in js
+    assert "run.run_id === askDraftState.submittedQuestionRunId ? askDraftState.submittedQuestion : \"\"" in js
+    assert "askDraftState.inputRunId !== runId" in js
+    assert "askDraftState.submittedQuestionRunId = result.run_id" in js
     assert "function isAskRun(run)" in js
     assert 'run.panel_mode === "ask"' in js
     assert "function askQuestionForRun(run)" in js
