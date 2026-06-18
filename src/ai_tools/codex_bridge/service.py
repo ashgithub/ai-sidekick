@@ -229,10 +229,9 @@ class CodexBridgeService:
         run = self._require_run(run_id)
         label, text = self._resolve_output_selection(run, output_key)
         if selected_text is not None:
-            if selected_text.strip():
-                if selected_text != text:
-                    raise ValueError("Edited output must be reviewed before applying to source")
-                text = selected_text
+            if not selected_text.strip():
+                raise ValueError("Edited output is empty")
+            text = selected_text
         run.primary_output = text
         run.response_text = text
         run.selected_output_label = label
@@ -269,15 +268,32 @@ class CodexBridgeService:
             run.turn_id = turn_response["turnId"]
         run.approval_needed = False
         run.pending_request_id = None
-        run.response_text = ""
+        structured = dict(run.structured_output or {})
+        if run.render_kind == "text_pair":
+            normalized = output_key.strip().lower()
+            if normalized == "corrected":
+                structured["corrected"] = edited_text
+            else:
+                structured["rewritten"] = edited_text
+        elif run.render_kind == "single_text":
+            structured["text"] = edited_text
+        run.structured_output = structured or run.structured_output
+        run.response_text = edited_text
         run.raw_response_text = ""
-        run.primary_output = ""
-        run.selected_output_text = ""
+        run.primary_output = edited_text
+        run.selected_output_text = edited_text
         run.append_transcript(kind="user", message=prompt)
         run.append_trace(kind="output_review_requested", label=f"Review edited output: {label}")
         run.mark_status(RunStatus.RUNNING, summary="Reviewing edited output")
         self.store.upsert(run)
         self.notifier.run_started("Run started", "Reviewing edited output.")
+        return run
+
+    def paste_run_output(self, run_id: str, *, app_name: str) -> RunRecord:
+        run = self._require_run(run_id)
+        resolved_app = app_name or run.source.source_label
+        run.append_trace(kind="paste_requested", label=f"Paste requested for {resolved_app}")
+        self.store.upsert(run)
         return run
 
     def _review_edited_output_prompt(
@@ -289,7 +305,9 @@ class CodexBridgeService:
         edited_text: str,
     ) -> str:
         lines = [
-            "Review edited AI Tools output. Do one task on the edited draft only. Return JSON only.",
+            "Review edited AI Tools output. Treat the edited draft as the source of truth.",
+            "Preserve the user's edits unless they conflict with the instructions above.",
+            "Make the smallest necessary changes and return JSON only.",
             "",
             "Output:",
             ai_tools_schema_example(run.render_kind),

@@ -30,15 +30,25 @@
         Ready.
       </section>
 
-      <nav class="mode-tabs" aria-label="Sidekick mode">
-        <button id="mode-rewrite-btn" type="button" class="mode-tab active" data-mode="rewrite">Rewrite</button>
-        <button id="mode-ask-btn" type="button" class="mode-tab" data-mode="ask">Ask</button>
-      </nav>
-
       <section class="task-canvas" aria-label="Sidekick task">
+        <section id="selected-input-runner" class="selected-input-runner" aria-label="Run selected text with a different nudge" hidden>
+          <label class="runner-control" for="nudge-select">
+            <span>Task</span>
+            <select id="nudge-select">
+              <option value="auto">Auto</option>
+              <option value="rewrite">Rewrite</option>
+              <option value="email">Email</option>
+              <option value="slack">Slack</option>
+              <option value="commands">Commands</option>
+              <option value="ask">Ask</option>
+              <option value="explain">Explain</option>
+            </select>
+          </label>
+          <button id="rerun-nudge-btn" type="button" class="ghost-button">Run</button>
+        </section>
         <section id="rewrite-pane" class="mode-pane" aria-label="Rewrite selected text">
           <div class="canvas-header">
-            <h2>Choose a version</h2>
+            <h2>Draft</h2>
             <p id="rewrite-helper" class="helper-text">Select text in an app, run the shortcut, then choose the version to use.</p>
           </div>
           <div id="version-tabs" class="version-tabs" role="tablist" aria-label="Rewrite versions" hidden>
@@ -49,6 +59,7 @@
           <div class="canvas-actions">
             <span id="rewrite-feedback" class="action-feedback" aria-live="polite"></span>
             <button id="use-output-btn" type="button">Apply to source</button>
+            <button id="audit-output-btn" type="button" class="ghost-button">Review changes</button>
             <button id="copy-output-btn" type="button" class="ghost-button">Copy text</button>
           </div>
           <details id="refine-drawer" class="refine-drawer" hidden>

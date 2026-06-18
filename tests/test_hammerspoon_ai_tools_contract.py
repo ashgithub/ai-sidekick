@@ -51,3 +51,12 @@ def test_hammerspoon_shortcut_polling_ignores_stale_callbacks_and_closed_server(
     assert "log.i(\"Sidekick result polling stopped" in lua
     assert "log.e(\"Sidekick result polling stopped" not in lua
     assert 'show_status("error", appName, "Sidekick result check failed.", true)' not in lua
+
+
+def test_hammerspoon_exposes_apply_callback_for_sidekick_only_runs() -> None:
+    lua = (ROOT / "init.lua").read_text(encoding="utf-8")
+
+    assert 'hs.urlevent.bind("apply_ai_tools_output"' in lua
+    assert 'window.location.href = `hammerspoon://apply_ai_tools_output?' not in lua
+    assert 'target_app = hs.application.find(appName)' in lua
+    assert 'config.paste()' in lua

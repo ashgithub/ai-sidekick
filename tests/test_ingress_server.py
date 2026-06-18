@@ -46,6 +46,7 @@ class StubService:
         self.abort_calls: list[str] = []
         self.select_calls: list[tuple[str, str, str | None]] = []
         self.review_calls: list[tuple[str, str, str]] = []
+        self.pasteback_calls: list[tuple[str, str]] = []
         self.submit_error = submit_error
         self.ready = ready
         self.thread_keys: list[str | None] = []
@@ -117,6 +118,17 @@ class StubService:
             },
         )()
 
+    def paste_run_output(self, run_id: str, *, app_name: str):
+        self.pasteback_calls.append((run_id, app_name))
+        return type(
+            "Run",
+            (),
+            {
+                "run_id": run_id,
+                "source": SourceMetadata(source_kind="ai_tools", source_label=app_name, source_id="ai-tools-1"),
+            },
+        )()
+
     def list_runs(self):
         return [self.current_run_record] if self.current_run_record else []
 
@@ -136,7 +148,7 @@ class StubService:
 
 class RejectingSelectionService(StubService):
     def select_run_output(self, run_id: str, *, output_key: str, selected_text: str | None = None):
-        raise ValueError("Edited output must be reviewed before applying to source")
+        raise ValueError("Edited output is empty")
 
 
 def test_ingress_server_accepts_slack_payload_and_reports_health() -> None:
@@ -479,6 +491,7 @@ def test_ai_tools_endpoint_persists_explain_metadata_to_real_service_current_run
                         "text": "selected browser question",
                         "app_context": "Safari",
                         "nudge": "explain",
+                        "shortcut_client_action": "show_sidekick",
                         "intent": "reuse",
                     }
                 ).encode("utf-8"),
@@ -502,6 +515,7 @@ def test_ai_tools_endpoint_persists_explain_metadata_to_real_service_current_run
     assert payload["run"]["render_kind"] == "single_text"
     assert payload["run"]["app_context"] == "Safari"
     assert payload["run"]["nudge"] == "explain"
+    assert payload["run"]["shortcut_client_action"] == "show_sidekick"
 
 
 def test_shortcut_endpoint_resolves_slack_profile_to_sidekick_review_action() -> None:
@@ -783,6 +797,7 @@ def test_shortcut_endpoint_persists_ask_metadata_to_real_service_current_run(tmp
     assert payload["run"]["prompt_instructions"] == "Explain selected text."
     assert payload["run"]["app_context"] == "Safari"
     assert payload["run"]["nudge"] == "explain"
+    assert payload["run"]["shortcut_client_action"] == "show_sidekick"
 
 
 def test_shortcut_endpoint_empty_text_opens_ask_mode_without_submitting() -> None:
@@ -956,6 +971,39 @@ def test_ingress_server_exposes_run_output_selection_action() -> None:
     assert service.select_calls == [("run-123", "alternative:1", "  edited command\n")]
 
 
+def test_ingress_server_exposes_run_output_pasteback_action() -> None:
+    service = StubService()
+    dispatched: list[str] = []
+    server = LocalIngressServer(
+        service=service,
+        host="127.0.0.1",
+        port=0,
+        pasteback_dispatcher=lambda app_name: dispatched.append(app_name),
+    )
+
+    try:
+        server.start()
+        response = request.urlopen(
+            request.Request(
+                f"http://127.0.0.1:{server.port}/api/runs/run-123/paste-output",
+                data=json.dumps({"app": "Safari"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            ),
+            timeout=2,
+        )
+    finally:
+        server.stop()
+
+    assert json.loads(response.read().decode("utf-8")) == {
+        "run_id": "run-123",
+        "status": "paste_requested",
+        "app": "Safari",
+    }
+    assert service.pasteback_calls == [("run-123", "Safari")]
+    assert dispatched == ["Safari"]
+
+
 def test_ingress_server_exposes_run_output_review_action() -> None:
     service = StubService()
     server = LocalIngressServer(service=service, host="127.0.0.1", port=0)
@@ -1007,7 +1055,7 @@ def test_ingress_server_returns_bad_request_for_rejected_output_selection() -> N
     assert response.code == 400
     assert json.loads(response.read().decode("utf-8")) == {
         "error": "selection_rejected",
-        "message": "Edited output must be reviewed before applying to source",
+        "message": "Edited output is empty",
     }
 
 

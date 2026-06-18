@@ -69,6 +69,7 @@ class RunRecord(BaseModel):
     prompt_instructions: str = ""
     app_context: str | None = None
     nudge: str | None = None
+    shortcut_client_action: str | None = None
     structured_output: dict[str, Any] | None = None
     primary_output: str = ""
     selected_output_label: str = ""

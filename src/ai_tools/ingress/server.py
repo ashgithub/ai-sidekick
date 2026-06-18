@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Callable
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from ai_tools.codex_bridge.config import ShortcutProfileConfig, default_shortcut_profiles
 from ai_tools.codex_bridge.models import SourceMetadata
@@ -17,6 +18,11 @@ from .client import build_ai_tools_prompt
 from .prompt_contract import infer_ai_tools_render_kind
 from .manual import manual_source_metadata
 from .slack import SlackIngressPayload, build_slack_worker_prompt
+
+
+def dispatch_hammerspoon_pasteback(app_name: str) -> None:
+    url = "hammerspoon://apply_ai_tools_output?" + urlencode({"app": app_name})
+    subprocess.run(["open", url], check=True)
 
 
 def serialize_panel_run(run: Any) -> dict[str, Any]:
@@ -45,6 +51,7 @@ class LocalIngressServer:
         shortcut_profiles: list[ShortcutProfileConfig] | None = None,
         shortcut_pending_retry_after_ms: int = 200,
         shortcut_review_retry_after_ms: int = 500,
+        pasteback_dispatcher: Callable[[str], None] = dispatch_hammerspoon_pasteback,
     ) -> None:
         self.service = service
         self.host = host
@@ -56,6 +63,7 @@ class LocalIngressServer:
         self.shortcut_profiles = shortcut_profiles or default_shortcut_profiles()
         self.shortcut_pending_retry_after_ms = shortcut_pending_retry_after_ms
         self.shortcut_review_retry_after_ms = shortcut_review_retry_after_ms
+        self.pasteback_dispatcher = pasteback_dispatcher
         self._server: ThreadingHTTPServer | None = None
         self._thread = None
 
@@ -245,6 +253,7 @@ class LocalIngressServer:
                             panel_mode=panel_mode,
                             app_context=app_context,
                             nudge=nudge,
+                            shortcut_client_action=str(body.get("shortcut_client_action", "")).strip() or None,
                         )
                     except Exception as exc:  # noqa: BLE001
                         self._write_json(
@@ -313,6 +322,7 @@ class LocalIngressServer:
                             ),
                             app_context=app_context,
                             nudge=profile.nudge,
+                            shortcut_client_action=profile.client_action,
                         )
                         if profile.show_panel:
                             outer.service.show_panel(mode=profile.panel_mode)
@@ -410,6 +420,24 @@ class LocalIngressServer:
                             "run_id": run.run_id,
                             "status": run.status.value,
                         },
+                    )
+                    return
+                if parsed.path.startswith("/api/runs/") and parsed.path.endswith("/paste-output"):
+                    run_id = parsed.path.split("/")[3]
+                    app_name = str(body.get("app", "")).strip()
+                    try:
+                        run = outer.service.paste_run_output(run_id, app_name=app_name)
+                        resolved_app = app_name or run.source.source_label
+                        outer.pasteback_dispatcher(resolved_app)
+                    except Exception as exc:  # noqa: BLE001
+                        self._write_json(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            {"error": "paste_failed", "message": str(exc), "detail": type(exc).__name__},
+                        )
+                        return
+                    self._write_json(
+                        HTTPStatus.OK,
+                        {"run_id": run.run_id, "status": "paste_requested", "app": resolved_app},
                     )
                     return
                 if parsed.path.startswith("/runs/") and parsed.path.endswith("/deny"):

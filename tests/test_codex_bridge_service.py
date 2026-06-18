@@ -193,12 +193,12 @@ def test_select_run_output_rejects_user_edited_text() -> None:
     run.response_text = "Rewritten text"
     service.store.upsert(run)
 
-    try:
-        service.select_run_output(run.run_id, output_key="rewritten", selected_text="Edited Slack text")
-    except ValueError as exc:
-        assert str(exc) == "Edited output must be reviewed before applying to source"
-    else:
-        raise AssertionError("edited output was applied without review")
+    updated = service.select_run_output(run.run_id, output_key="rewritten", selected_text="Edited Slack text")
+
+    assert updated.primary_output == "Edited Slack text"
+    assert updated.response_text == "Edited Slack text"
+    assert updated.selected_output_label == "Rewritten"
+    assert updated.selected_output_text == "Edited Slack text"
 
 
 def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
@@ -230,7 +230,7 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     assert len(client.thread_start_calls) == 1
     assert client.turn_start_calls[-1]["threadId"] == "thread-1"
     review_prompt = client.turn_start_calls[-1]["input"][0]["text"]
-    assert "Review edited AI Tools output. Do one task on the edited draft only. Return JSON only." in review_prompt
+    assert "Review edited AI Tools output. Treat the edited draft as the source of truth." in review_prompt
     assert '"render_kind":"text_pair"' in review_prompt
     assert "Make Slack text concise and professional." in review_prompt
     assert "App context: Slack" in review_prompt
@@ -241,11 +241,14 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     assert "Rewritten text" in review_prompt
     assert "Edited draft:" in review_prompt
     assert "Edited Slack text" in review_prompt
+    assert "Preserve the user's edits unless they conflict with the instructions above." in review_prompt
     assert "Routing rules:" not in review_prompt
     assert "Original AI Tools request:" not in review_prompt
     assert reviewed.status is RunStatus.RUNNING
-    assert reviewed.primary_output == ""
-    assert reviewed.response_text == ""
+    assert reviewed.primary_output == "Edited Slack text"
+    assert reviewed.response_text == "Edited Slack text"
+    assert reviewed.selected_output_text == "Edited Slack text"
+    assert reviewed.structured_output == {"corrected": "Corrected text", "rewritten": "Edited Slack text"}
     assert reviewed.trace[-1].kind == "output_review_requested"
 
 

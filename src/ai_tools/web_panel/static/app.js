@@ -9,8 +9,9 @@ const sourceLineEl = document.getElementById("source-line");
 const abortBtn = document.getElementById("abort-btn");
 const refreshBtn = document.getElementById("refresh-btn");
 const closePanelBtn = document.getElementById("close-panel-btn");
-const modeRewriteBtn = document.getElementById("mode-rewrite-btn");
-const modeAskBtn = document.getElementById("mode-ask-btn");
+const selectedInputRunnerEl = document.getElementById("selected-input-runner");
+const nudgeSelectEl = document.getElementById("nudge-select");
+const rerunNudgeBtn = document.getElementById("rerun-nudge-btn");
 const rewritePaneEl = document.getElementById("rewrite-pane");
 const askPaneEl = document.getElementById("ask-pane");
 const rewriteHelperEl = document.getElementById("rewrite-helper");
@@ -19,6 +20,7 @@ const versionRewrittenBtn = document.getElementById("version-rewritten-btn");
 const versionCorrectedBtn = document.getElementById("version-corrected-btn");
 const selectedOutputTextareaEl = document.getElementById("selected-output-textarea");
 const useOutputBtn = document.getElementById("use-output-btn");
+const auditOutputBtn = document.getElementById("audit-output-btn");
 const copyOutputBtn = document.getElementById("copy-output-btn");
 const rewriteFeedbackEl = document.getElementById("rewrite-feedback");
 const refineDrawerEl = document.getElementById("refine-drawer");
@@ -47,6 +49,10 @@ let applyFeedbackTimer = null;
 let feedbackToken = 0;
 let refineSubmitting = false;
 let refineFeedbackTimer = null;
+let nudgeSelectionRunId = null;
+let nudgeSelectionDirty = false;
+let auditPendingRunId = null;
+let auditPendingText = "";
 const askDraftState = {
   submittedQuestion: "",
   submittedQuestionRunId: null,
@@ -83,10 +89,6 @@ function setMode(mode, options = {}) {
   }
   currentMode = nextMode;
   const askActive = currentMode === "ask";
-  modeAskBtn.classList.toggle("active", askActive);
-  modeRewriteBtn.classList.toggle("active", !askActive);
-  modeAskBtn.setAttribute("aria-selected", String(askActive));
-  modeRewriteBtn.setAttribute("aria-selected", String(!askActive));
   askPaneEl.hidden = !askActive;
   rewritePaneEl.hidden = askActive;
   if (options.persist) {
@@ -353,6 +355,40 @@ function canRefineRun(run) {
   return run && run.thread_id && run.source && run.source.source_kind === "ai_tools" && run.panel_mode !== "ask";
 }
 
+function canRerunSelectedInput(run) {
+  return run && run.source && run.source.source_kind === "ai_tools" && (run.display_input_text || "").trim() !== "";
+}
+
+function runNudgeForRun(run) {
+  if (!run) {
+    return "auto";
+  }
+  return (run.nudge || "").trim().toLowerCase() || "auto";
+}
+
+function currentSelectedNudge() {
+  return (nudgeSelectEl.value || "auto").trim().toLowerCase() || "auto";
+}
+
+function renderSelectedInputRunner() {
+  const run = currentRun;
+  const available = canRerunSelectedInput(run);
+  selectedInputRunnerEl.hidden = !available;
+  if (!available) {
+    nudgeSelectEl.value = "auto";
+    nudgeSelectionRunId = null;
+    nudgeSelectionDirty = false;
+    rerunNudgeBtn.disabled = true;
+    return;
+  }
+  if (nudgeSelectionRunId !== run.run_id || !nudgeSelectionDirty) {
+    nudgeSelectEl.value = runNudgeForRun(run);
+    nudgeSelectionRunId = run.run_id;
+    nudgeSelectionDirty = false;
+  }
+  rerunNudgeBtn.disabled = outputSelecting || refineSubmitting || askSubmitting;
+}
+
 function renderVersionTabs(run) {
   const isTextPair = run && run.render_kind === "text_pair";
   versionTabsEl.hidden = !isTextPair;
@@ -374,14 +410,29 @@ function renderVersionTabs(run) {
 function renderRewritePane() {
   const run = currentRun;
   renderVersionTabs(run);
+  const auditComplete = auditPendingRunId && run && auditPendingRunId === run.run_id && run.status === "completed";
+  if (auditComplete) {
+    auditPendingRunId = null;
+    auditPendingText = "";
+    selectedOutputDirty = false;
+    rewriteFeedbackEl.textContent = "Audit updated the draft. Review before applying.";
+  }
   const output = outputText(run, selectedOutputKey);
-  const shouldReplaceText = !selectedOutputDirty || selectedOutputRunId !== (run && run.run_id);
-  if (shouldReplaceText) {
+  const auditInFlight = auditPendingRunId && run && auditPendingRunId === run.run_id
+    && (run.status === "queued" || run.status === "starting" || run.status === "running");
+  const shouldReplaceText = !auditInFlight && (!selectedOutputDirty || selectedOutputRunId !== (run && run.run_id));
+  if (auditInFlight) {
+    selectedOutputTextareaEl.value = auditPendingText;
+  } else if (shouldReplaceText) {
     selectedOutputTextareaEl.value = output;
   }
   const canUse = canSelectOutput(run) && selectedOutputTextareaEl.value.trim() !== "";
+  const editedOutput = canUse && selectedOutputChanged(run);
+  useOutputBtn.hidden = !canUse || editedOutput;
   useOutputBtn.disabled = !canUse || outputSelecting;
-  useOutputBtn.textContent = selectedOutputChanged(run) ? "Review edits" : "Apply to source";
+  useOutputBtn.textContent = "Apply to source";
+  auditOutputBtn.hidden = !canUse || !editedOutput;
+  auditOutputBtn.disabled = !editedOutput || outputSelecting;
   copyOutputBtn.disabled = selectedOutputTextareaEl.value.trim() === "" || outputSelecting;
   refineDrawerEl.hidden = !canRefineRun(run);
   refineSubmitBtn.disabled = refineSubmitting || !refineInputEl.value.trim();
@@ -391,12 +442,12 @@ function renderRewritePane() {
     return;
   }
   if (run.status === "running" || run.status === "starting" || run.status === "queued") {
-    rewriteHelperEl.textContent = "Working on the selected text.";
+    rewriteHelperEl.textContent = auditInFlight ? "Codex is auditing your edited draft." : "Working on the selected text.";
     selectedOutputTextareaEl.placeholder = "Writing output...";
     return;
   }
   rewriteHelperEl.textContent = run.render_kind === "text_pair"
-    ? "Switch versions, edit the text, then apply it back to the source app."
+    ? "Switch versions, edit the text, apply it directly, or audit the edited draft with Codex."
     : "Review the output, edit if needed, then apply it back to the source app.";
 }
 
@@ -520,6 +571,7 @@ function renderAskPane() {
 }
 
 function renderModeContent() {
+  renderSelectedInputRunner();
   if (currentMode === "ask") {
     renderAskPane();
     return;
@@ -538,29 +590,80 @@ async function selectOutput() {
   outputSelecting = true;
   renderRewritePane();
   try {
-    if (selectedOutputChanged(currentRun)) {
-      await fetchJson(`/api/runs/${currentRun.run_id}/review-output`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ output_key: selectedOutputKey, text }),
-      });
-      rewriteFeedbackEl.textContent = "Reviewing changes.";
-      selectedOutputDirty = false;
-      await refreshRuns();
-      return;
-    }
     await fetchJson(`/api/runs/${currentRun.run_id}/select-output`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ output_key: selectedOutputKey, text }),
     });
     await copyText(text);
+    if (currentRun && currentRun.shortcut_client_action === "show_sidekick" && currentRun.source && currentRun.source.source_label) {
+      await fetchJson(`/api/runs/${currentRun.run_id}/paste-output`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app: currentRun.source.source_label }),
+      });
+    }
     setTemporaryFeedback("Applied to source.", useOutputBtn, "Applied", "apply");
     selectedOutputDirty = false;
     await refreshRuns();
   } finally {
     outputSelecting = false;
     renderRewritePane();
+  }
+}
+
+async function submitOutputAudit() {
+  if (!canSelectOutput(currentRun) || outputSelecting || !selectedOutputChanged(currentRun)) {
+    return;
+  }
+  const text = selectedOutputTextareaEl.value;
+  if (!text.trim()) {
+    return;
+  }
+  outputSelecting = true;
+  auditPendingRunId = currentRun.run_id;
+  auditPendingText = text;
+  renderRewritePane();
+  try {
+    await fetchJson(`/api/runs/${currentRun.run_id}/review-output`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ output_key: selectedOutputKey, text }),
+    });
+    rewriteFeedbackEl.textContent = "Audit requested.";
+    await refreshRuns();
+  } finally {
+    outputSelecting = false;
+    renderRewritePane();
+  }
+}
+
+async function runWithSelectedNudge() {
+  if (!canRerunSelectedInput(currentRun) || askSubmitting) {
+    return;
+  }
+  askSubmitting = true;
+  renderSelectedInputRunner();
+  try {
+    await fetchJson("/api/ai-tools", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_kind: "ai_tools",
+        source_label: currentRun.source.source_label || "AI Tools",
+        source_id: `ai-tools-panel-${Date.now()}`,
+        text: currentRun.display_input_text,
+        app_context: currentRun.app_context || "",
+        nudge: currentSelectedNudge() === "auto" ? "" : currentSelectedNudge(),
+        shortcut_client_action: currentRun.shortcut_client_action || "",
+        intent: "reuse",
+      }),
+    });
+    nudgeSelectionDirty = false;
+    await refreshRuns();
+  } finally {
+    askSubmitting = false;
+    renderSelectedInputRunner();
   }
 }
 
@@ -826,8 +929,9 @@ function startEventStream() {
   return true;
 }
 
-modeRewriteBtn.addEventListener("click", () => setMode("rewrite", { persist: true, transferBlank: true }));
-modeAskBtn.addEventListener("click", () => setMode("ask", { persist: true, transferBlank: true }));
+nudgeSelectEl.addEventListener("change", () => {
+  nudgeSelectionDirty = true;
+});
 versionRewrittenBtn.addEventListener("click", () => {
   selectedOutputKey = "rewritten";
   selectedOutputDirty = false;
@@ -847,7 +951,9 @@ refreshBtn.addEventListener("click", refreshRuns);
 closePanelBtn.addEventListener("click", () => closePanel().catch((error) => console.error(error)));
 abortBtn.addEventListener("click", () => abortRun(currentRun && currentRun.run_id));
 useOutputBtn.addEventListener("click", () => selectOutput().catch((error) => console.error(error)));
+auditOutputBtn.addEventListener("click", () => submitOutputAudit().catch((error) => console.error(error)));
 copyOutputBtn.addEventListener("click", () => copySelectedOutput().catch((error) => console.error(error)));
+rerunNudgeBtn.addEventListener("click", () => runWithSelectedNudge().catch((error) => console.error(error)));
 refineSubmitBtn.addEventListener("click", () => submitRefinement().catch((error) => console.error(error)));
 askSubmitBtn.addEventListener("click", () => submitAsk().catch((error) => console.error(error)));
 askNewBtn.addEventListener("click", () => {

@@ -237,6 +237,28 @@ label {
   padding: var(--rds-space-sm);
 }
 
+.selected-input-runner {
+  display: flex;
+  align-items: end;
+  gap: var(--rds-space-sm);
+}
+
+.selected-input-runner[hidden] {
+  display: none;
+}
+
+.runner-control {
+  display: grid;
+  gap: var(--rds-space-2xs);
+  flex: 1;
+  color: var(--rds-text-secondary);
+  font-size: var(--rds-font-size-body-sm);
+}
+
+.runner-control select {
+  width: 100%;
+}
+
 .mode-pane {
   display: grid;
   gap: var(--rds-space-sm);

@@ -537,3 +537,22 @@ hs.urlevent.bind("alert", function(eventName, params)
     hs.alert.show(message, 2)
     hs.sound.getByName("Blow"):play()
 end)
+
+hs.urlevent.bind("apply_ai_tools_output", function(eventName, params)
+    local appName = urlDecode(params["app"]) or ""
+    local config = app_configs[appName] or app_configs["default"]
+    local target_app = nil
+    if appName ~= "" then
+        target_app = hs.application.find(appName)
+        if not target_app then
+            hs.application.launchOrFocus(appName)
+            hs.timer.usleep(300000)
+            target_app = hs.application.find(appName)
+        end
+    end
+    if target_app then
+        target_app:activate()
+    end
+    hs.timer.usleep(200000)
+    config.paste()
+end)

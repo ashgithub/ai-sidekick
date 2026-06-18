@@ -15,7 +15,7 @@ def test_web_panel_is_compact_sidekick_not_dashboard() -> None:
     assert "sidekick-panel" in html
     assert "brand-lockup" in html
     assert "brand-icon" in html
-    assert "mode-tabs" in html
+    assert "mode-tabs" not in html
     assert "task-canvas" in html
     assert "details-drawer" in html
     assert "rail-left" not in html
@@ -30,7 +30,9 @@ def test_web_panel_is_compact_sidekick_not_dashboard() -> None:
     assert "<summary>Event trace</summary>" in html
     assert "<summary>Details</summary>" in html
     assert "<h2>Ask</h2>" in html
-    assert "Choose a version" in html
+    assert "Draft" in html
+    assert "Task" in html
+    assert "Run" in html
     assert "Manual prompt" not in html
 
 
@@ -106,15 +108,24 @@ def test_web_panel_renders_structured_ai_tools_outputs() -> None:
     html = read_static("index.html")
 
     assert "version-tabs" in html
+    assert "nudge-select" in html
+    assert "Run with nudge" not in html
+    assert "Review changes" in html
     assert "selected-output-textarea" in html
     assert "rewrite-feedback" in html
     assert "selectOutput" in js
     assert "Apply to source" in html
-    assert "Review edits" in js
     assert "Copy text" in html
     assert "Copied to clipboard." in js
     assert "Applied to source." in js
-    assert "Reviewing changes." in js
+    assert "Audit requested." in js
+    assert "runWithSelectedNudge" in js
+    assert "submitOutputAudit" in js
+    assert "useOutputBtn.hidden = !canUse || editedOutput" in js
+    assert "auditOutputBtn.hidden = !canUse || !editedOutput" in js
+    assert 'currentRun.shortcut_client_action === "show_sidekick"' in js
+    assert 'hammerspoon://apply_ai_tools_output?' not in js
+    assert "/paste-output" in js
     assert "Ask Codex to revise" in html
     assert "Revise with instruction" in html
     assert "Tell Codex what to change." in html
@@ -135,7 +146,7 @@ def test_web_panel_supports_ask_mode_without_selected_text() -> None:
     js = read_static("app.js")
     html = read_static("index.html")
 
-    assert "mode-ask-btn" in html
+    assert "mode-ask-btn" not in html
     assert "ask-input" in html
     assert "ask-submit-btn" in html
     assert "ask-question-view" not in html
@@ -164,6 +175,7 @@ def test_web_panel_supports_ask_mode_without_selected_text() -> None:
     assert "payload.run && payload.run.panel_mode ? payload.run.panel_mode : payload.panel_mode" in js
     assert 'lastAskQuestion = prompt;\n    askInputEl.value = "";' not in js
     assert 'currentMode === "ask" || currentRun.source.source_label === "Ask"' not in js
+    assert "selected-input-runner" in html
 
 
 def test_web_panel_carries_blank_mode_editor_text_on_user_toggle() -> None:
@@ -175,5 +187,5 @@ def test_web_panel_carries_blank_mode_editor_text_on_user_toggle() -> None:
     assert 'if (nextMode === "rewrite" && selectedOutputTextareaEl.value.trim() === "")' in js
     assert "selectedOutputTextareaEl.value = askInputEl.value" in js
     assert "selectedOutputDirty = selectedOutputTextareaEl.value.trim() !== \"\"" in js
-    assert 'setMode("rewrite", { persist: true, transferBlank: true })' in js
-    assert 'setMode("ask", { persist: true, transferBlank: true })' in js
+    assert "const payloadMode = payload.run && payload.run.panel_mode ? payload.run.panel_mode : payload.panel_mode" in js
+    assert "setMode(payloadMode || currentMode)" in js
