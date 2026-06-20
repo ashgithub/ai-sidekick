@@ -140,8 +140,8 @@ def test_hammerspoon_hotkey_requires_manually_started_bridge() -> None:
     assert "panel_open_hotkey_mods" in lua
     assert "panel_open_hotkey_key" in lua
     assert "hs.hotkey.bind(panel_open_hotkey_mods" in lua
-    assert "scripts/start_web_panel_daemon.sh" in lua
-    assert "scripts/toggle_web_panel.sh" in lua
+    assert "bin/sidekick" in lua
+    assert "scripts/internal/panel-toggle.sh" in lua
     assert "Codex shortcuts loaded" in lua
     assert "fallback config" in lua
     assert "Bridge starts manually" in lua
@@ -162,18 +162,18 @@ def test_hammerspoon_hotkey_requires_manually_started_bridge() -> None:
 
 
 def test_manual_bridge_launcher_uses_yaml_config_and_open_panel_helper() -> None:
-    common_env = (ROOT / "scripts" / "common_env.sh").read_text(encoding="utf-8")
-    launcher = (ROOT / "scripts" / "start_web_panel_daemon.sh").read_text(encoding="utf-8")
-    opener = (ROOT / "scripts" / "open_web_panel.sh").read_text(encoding="utf-8")
-    toggler = (ROOT / "scripts" / "toggle_web_panel.sh").read_text(encoding="utf-8")
-    config_helper = (ROOT / "scripts" / "codex_web_panel_config_json.sh").read_text(encoding="utf-8")
+    common_env = (ROOT / "scripts" / "internal" / "env.sh").read_text(encoding="utf-8")
+    launcher = (ROOT / "bin" / "sidekick").read_text(encoding="utf-8")
+    opener = (ROOT / "scripts" / "internal" / "panel-show.sh").read_text(encoding="utf-8")
+    toggler = (ROOT / "scripts" / "internal" / "panel-toggle.sh").read_text(encoding="utf-8")
+    config_helper = (ROOT / "scripts" / "internal" / "config-json.sh").read_text(encoding="utf-8")
 
     assert "AI_TOOLS_WEB_PANEL_STATE_PATH" not in common_env
     assert "--config" in launcher
     assert "--panel-visibility" in launcher
     assert "/readyz" in launcher
     assert "Panel URL:" in launcher
-    assert "Open panel:" in launcher
+    assert "Open panel helper:" in launcher
     assert "already has a compatible bridge running" in launcher
     assert "is already in use by another process" in launcher
     assert "--restart" in launcher

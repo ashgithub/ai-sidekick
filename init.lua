@@ -3,8 +3,8 @@ require("hs.ipc")
 
 -- Paths
 local dir = os.getenv("HOME") .. "/work/code/python/ai_tools"
-local web_panel_config_script = dir .. "/scripts/codex_web_panel_config_json.sh"
-local web_panel_start_script = dir .. "/scripts/start_web_panel_daemon.sh"
+local web_panel_config_script = dir .. "/scripts/internal/config-json.sh"
+local web_panel_start_script = dir .. "/bin/sidekick"
 local ai_tools_sidekick_enabled = true
 -- local scriptMode = "-m proof"
 local default_window_width = 900

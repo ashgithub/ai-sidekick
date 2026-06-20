@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 asset_dir="$repo_root/src/ai_tools/web_panel/static/assets"
 source_png="$asset_dir/codex-sidekick-icon.png"
 output_icns="$asset_dir/codex-sidekick-icon.icns"

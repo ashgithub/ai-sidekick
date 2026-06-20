@@ -9,9 +9,9 @@ server:
 panel:
   visibility: always # always | attention | manual
   # Opens/focuses the native sidekick. Used by auto-open paths.
-  open_command: scripts/open_web_panel.sh
+  open_command: scripts/internal/panel-show.sh
   # Toggles the native sidekick. Used by the function-key shortcut.
-  toggle_command: scripts/toggle_web_panel.sh
+  toggle_command: scripts/internal/panel-toggle.sh
   open_hotkey:
     # Function-key shortcut to toggle the companion on demand.
     # Plain F5 is easy to reach and unused by this repo's Hammerspoon bindings.

@@ -1,6 +1,6 @@
 # AI Text Tools
 
-The AI Text Tools shortcut and CLI now submit to the resident Codex sidekick by default. The legacy Tk GUI remains available as an explicit fallback.
+The AI Text Tools shortcut and CLI submit to the resident Codex sidekick. The legacy Tk GUI has been removed.
 
 ## Workflow
 
@@ -11,7 +11,7 @@ The AI Text Tools shortcut and CLI now submit to the resident Codex sidekick by 
 5. AI Text Tools use in-memory per-tool reusable Codex threads while the daemon is alive.
 6. Codex returns JSON that the sidekick renders as text, text-pair, or alternatives.
 
-The Hammerspoon hot path avoids spawning the Python CLI. It copies selected text, posts minimal JSON to `/api/shortcut`, follows the bridge-returned client action, then pastes reviewed output back into the source app when the profile supports paste-back. Slack and email profiles wait in the sidekick after generation so you can preview the proposed text, then apply the reviewed text. Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code open Ask mode for explain/copy workflows. If you edit any AI-produced output in Sidekick, the primary action changes to `Review edits`; edited output must go through another AI pass before it can be applied to any source app. If no text is selected, the bridge opens the sidekick in Ask mode without submitting automatically. `scripts/run_app.sh` remains available for explicit command-line use and legacy Tk comparison, but the Hammerspoon hot path no longer falls back to it.
+The Hammerspoon hot path avoids spawning the Python CLI. It copies selected text, posts minimal JSON to `/api/shortcut`, follows the bridge-returned client action, then pastes reviewed output back into the source app when the profile supports paste-back. Slack and email profiles wait in the sidekick after generation so you can preview the proposed text, then apply the reviewed text. Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code open Ask mode for explain/copy workflows. If you edit any AI-produced output in Sidekick, the primary action changes to `Review edits`; edited output must go through another AI pass before it can be applied to any source app. If no text is selected, the bridge opens the sidekick in Ask mode without submitting automatically. `scripts/dev/sidekick-submit-text.sh` remains available for explicit command-line diagnostics.
 
 The `Ask Codex to revise` drawer keeps follow-up controls out of the main apply path. It defaults to the same thread and includes a `Fresh thread` option for cases where the next revision should not reuse the current Codex thread context.
 
@@ -33,28 +33,22 @@ Codex threads use `config/codex_web_panel.yaml -> codex.cwd`. The default is `~/
 ## Run From Command Line
 
 ```bash
-./scripts/run_app.sh --text "Explain CAP theorem"
-./scripts/run_app.sh --nudge slack --app slack --text "hi team pls review by tomrw"
-./scripts/run_app.sh --nudge commands --text "list large files in current directory"
+./scripts/dev/sidekick-submit-text.sh --text "Explain CAP theorem"
+./scripts/dev/sidekick-submit-text.sh --nudge slack --app slack --text "hi team pls review by tomrw"
+./scripts/dev/sidekick-submit-text.sh --nudge commands --text "list large files in current directory"
 ```
 
 These commands post explicit structured text-tool work to `http://127.0.0.1:8765/api/ai-tools` and show the sidekick. Add `--intent reuse` to use the same per-tool reuse behavior as Hammerspoon. Start the sidekick first:
 
 ```bash
-./scripts/start_web_panel_daemon.sh --restart
-```
-
-Use the legacy Tk GUI explicitly if you need to compare behavior while validating the sidekick:
-
-```bash
-./scripts/run_app.sh --tk --tab Proofread --app slack --text "quick draft message"
+./bin/sidekick --restart
 ```
 
 Legacy flags such as `--tab`, `--app`, `--nudge`, and `--text` remain accepted for sidekick submission.
 
-## Tk Removal Gates
+## Historical Tk Removal Gates
 
-Do not remove the legacy Tk client until these sidekick behaviors are manually approved:
+The legacy Tk client was removed after these sidekick behaviors were implemented:
 
 - Proofread/rewrite returns structured `Corrected` and `Rewritten` outputs, with `Rewritten` as the default paste-back result.
 - Slack context uses Slack-friendly formatting and emoji behavior; non-Slack contexts do not force emoji.

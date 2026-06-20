@@ -10,8 +10,8 @@ end
 
 local this_script_dir = script_dir() or (os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/")
 local repo_root = this_script_dir:gsub("/slack_codex_workflow/hammerspoon/$", "")
-local manual_daemon_script = repo_root .. "/scripts/start_web_panel_daemon.sh"
-local config_script = repo_root .. "/scripts/codex_web_panel_config_json.sh"
+local manual_daemon_script = repo_root .. "/bin/sidekick"
+local config_script = repo_root .. "/scripts/internal/config-json.sh"
 local config_load_failed = false
 
 local function load_config()
@@ -27,8 +27,8 @@ local function load_config()
         server = { port = 8765 },
         panel = {
             visibility = "manual",
-            open_command = "scripts/open_web_panel.sh",
-            toggle_command = "scripts/toggle_web_panel.sh",
+            open_command = "scripts/internal/panel-show.sh",
+            toggle_command = "scripts/internal/panel-toggle.sh",
             open_hotkey = { mods = {}, key = "f5" },
         },
     }
@@ -37,8 +37,8 @@ end
 local config = load_config()
 local panel_port = tostring((config.server and config.server.port) or "8765")
 local panel_visibility = (config.panel and config.panel.visibility) or "manual"
-local panel_open_command = (config.panel and config.panel.open_command) or "scripts/open_web_panel.sh"
-local panel_toggle_command = (config.panel and config.panel.toggle_command) or "scripts/toggle_web_panel.sh"
+local panel_open_command = (config.panel and config.panel.open_command) or "scripts/internal/panel-show.sh"
+local panel_toggle_command = (config.panel and config.panel.toggle_command) or "scripts/internal/panel-toggle.sh"
 local open_panel_script = repo_root .. "/" .. panel_open_command
 local toggle_panel_script = repo_root .. "/" .. panel_toggle_command
 local panel_open_hotkey = (config.panel and config.panel.open_hotkey) or {}

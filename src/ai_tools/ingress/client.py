@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             )
     except Exception as exc:  # noqa: BLE001
         print("Codex sidekick is not running or did not accept the request.", file=sys.stderr)
-        print("Start it with: ./scripts/start_web_panel_daemon.sh --restart", file=sys.stderr)
+        print("Start it with: ./bin/sidekick --restart", file=sys.stderr)
         print(f"Detail: {exc}", file=sys.stderr)
         return 1
 

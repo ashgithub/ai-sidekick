@@ -133,11 +133,11 @@ def test_zsh_docs_and_demo_use_sidekick_helper() -> None:
     paths = [
         repo_root / "docs" / "codex-nl-shell-shortcut.md",
         repo_root / "docs" / "presentations" / "codex-nl-shell.md",
-        repo_root / "scripts" / "demo_codex_nl_shell_shortcut.sh",
+        repo_root / "scripts" / "demo" / "codex-nl-shell-demo.sh",
     ]
 
     for path in paths:
         text = path.read_text()
-        assert "scripts/codex_nl_shell_sidekick.sh" in text
+        assert "bin/codex-nl-shell" in text
         assert "codex exec" not in text
         assert "CODEX_NL_MODEL" not in text

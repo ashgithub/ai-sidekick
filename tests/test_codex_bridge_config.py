@@ -12,8 +12,8 @@ server:
   port: 8876
 panel:
   visibility: always
-  open_command: scripts/open_web_panel.sh
-  toggle_command: scripts/toggle_web_panel.sh
+  open_command: scripts/internal/panel-show.sh
+  toggle_command: scripts/internal/panel-toggle.sh
   open_hotkey:
     mods: []
     key: f5
@@ -51,8 +51,8 @@ shortcuts:
 
     assert config.server.port == 8876
     assert config.panel.visibility == "always"
-    assert config.panel.open_command == "scripts/open_web_panel.sh"
-    assert config.panel.toggle_command == "scripts/toggle_web_panel.sh"
+    assert config.panel.open_command == "scripts/internal/panel-show.sh"
+    assert config.panel.toggle_command == "scripts/internal/panel-toggle.sh"
     assert config.panel.open_hotkey.key == "f5"
     assert config.notifications.enabled is False
     assert config.codex.model == "gpt-5.4-mini"
@@ -75,8 +75,8 @@ def test_load_web_panel_config_uses_defaults() -> None:
     assert config.server.host == "127.0.0.1"
     assert config.server.port == 8765
     assert config.panel.visibility == "always"
-    assert config.panel.open_command == "scripts/open_web_panel.sh"
-    assert config.panel.toggle_command == "scripts/toggle_web_panel.sh"
+    assert config.panel.open_command == "scripts/internal/panel-show.sh"
+    assert config.panel.toggle_command == "scripts/internal/panel-toggle.sh"
     assert config.panel.open_hotkey.key == "f5"
     assert config.notifications.enabled is True
     assert config.codex.model == "inherit"

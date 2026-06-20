@@ -22,8 +22,8 @@ class HotkeyConfig(BaseModel):
 
 class PanelConfig(BaseModel):
     visibility: Literal["always", "attention", "manual"] = "always"
-    open_command: str = "scripts/open_web_panel.sh"
-    toggle_command: str = "scripts/toggle_web_panel.sh"
+    open_command: str = "scripts/internal/panel-show.sh"
+    toggle_command: str = "scripts/internal/panel-toggle.sh"
     open_hotkey: HotkeyConfig = Field(default_factory=HotkeyConfig)
 
 

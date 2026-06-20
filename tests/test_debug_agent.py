@@ -1,6 +1,16 @@
 import argparse
+import importlib.util
+from pathlib import Path
 
-from scripts.debug_agent import _build_request, _compact_event_lines, _update_event_stats
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "dev" / "agent_debug.py"
+SPEC = importlib.util.spec_from_file_location("agent_debug", SCRIPT_PATH)
+assert SPEC and SPEC.loader
+agent_debug = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(agent_debug)
+
+_build_request = agent_debug._build_request
+_compact_event_lines = agent_debug._compact_event_lines
+_update_event_stats = agent_debug._update_event_stats
 
 
 def test_build_request_uses_app_nudge_and_model():

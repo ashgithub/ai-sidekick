@@ -10,7 +10,7 @@ def test_hammerspoon_ai_tools_shortcut_posts_minimal_payload_to_shortcut_endpoin
     assert "local ai_tools_sidekick_enabled = true" in lua
     assert "/api/shortcut" in lua
     assert "/api/shortcut/results/" in lua
-    assert "/api/panel/toggle" in (ROOT / "scripts" / "toggle_web_panel.sh").read_text(encoding="utf-8")
+    assert "/api/panel/toggle" in (ROOT / "scripts" / "internal" / "panel-toggle.sh").read_text(encoding="utf-8")
     assert "hs.json.encode" in lua
     assert "hs.http.asyncPost(urls.shortcut" in lua
     assert '["app"] = appName' in lua

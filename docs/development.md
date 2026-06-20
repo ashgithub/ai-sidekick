@@ -5,7 +5,7 @@
 Run the full local validation pipeline:
 
 ```bash
-./scripts/test_app.sh
+./bin/sidekick-check
 ```
 
 It runs:

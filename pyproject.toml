@@ -23,11 +23,8 @@ dependencies = [
     "pytest>=7.0.0",
 ]
 
-[project.scripts]
-ai_tool = "clients.multi_tool_client:main"
-
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_tools", "examples", "clients"]
+packages = ["src/ai_tools"]
 
 [dependency-groups]
 dev = [

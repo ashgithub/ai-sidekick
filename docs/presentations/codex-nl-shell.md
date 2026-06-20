@@ -31,7 +31,7 @@ sequenceDiagram
     You->>Ghostty: type an English shell request
     You->>Ghostty: press ctrl+option+command+/
     Ghostty->>zsh: private escape sequence
-    zsh->>Sidekick: scripts/codex_nl_shell_sidekick.sh
+    zsh->>Sidekick: bin/codex-nl-shell
     Sidekick-->>zsh: one safe zsh command
     zsh-->>You: command appears in BUFFER
     You->>zsh: review, edit, or press Enter
@@ -142,7 +142,7 @@ Step 5: The Sidekick Generates One Command
 File: `~/.zsh/widgets/codex-nl-shell.zsh`
 
 ```zsh
-local helper="$HOME/work/code/python/ai_tools/scripts/codex_nl_shell_sidekick.sh"
+local helper="$HOME/work/code/python/ai_tools/bin/codex-nl-shell"
 
 "$helper" "$query" >"$tmp" 2>"$err"
 ```

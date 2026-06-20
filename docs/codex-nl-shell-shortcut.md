@@ -42,7 +42,7 @@ The `ctrl+option+command+/` shortcut is the terminal natural-language-to-shell f
 6. It invokes the resident sidekick-backed helper:
 
    ```bash
-   /Users/ashish/work/code/python/ai_tools/scripts/codex_nl_shell_sidekick.sh "$query"
+   /Users/ashish/work/code/python/ai_tools/bin/codex-nl-shell "$query"
    ```
 
 7. The helper submits a zsh command-generation task to the resident bridge and waits for one command.
@@ -55,7 +55,7 @@ The shortcut does not execute the generated command automatically.
 
 - If the shell says `codex: type a shell request first`, the prompt buffer was empty.
 - If it says `codex: sidekick helper not found`, confirm the repo exists at `~/work/code/python/ai_tools`.
-- If it says `codex: sidekick failed`, start `./scripts/start_web_panel_daemon.sh --restart` and check `/tmp/codex-nl-shell-last.err`.
+- If it says `codex: sidekick failed`, start `./bin/sidekick --restart` and check `/tmp/codex-nl-shell-last.err`.
 - If the shortcut does nothing, confirm Ghostty has the `ctrl+opt+cmd+/` keybind and zsh has sourced `~/.zsh/widgets/codex-nl-shell.zsh`.
 
 ## Related Hammerspoon Bindings
