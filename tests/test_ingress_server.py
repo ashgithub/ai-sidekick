@@ -242,7 +242,7 @@ def test_ingress_server_omits_transcript_from_panel_run_snapshot() -> None:
 def test_ingress_server_serializes_run_display_input_and_panel_mode() -> None:
     run = RunRecord.create(
         source=SourceMetadata(source_kind="ai_tools", source_label="Safari", source_id="ai-tools-1"),
-        prompt="AI Tools request\n\nInput:\nSelected browser text",
+        prompt="AI Sidekick request\n\nInput:\nSelected browser text",
     )
     run.display_input_text = "Selected browser text"
     run.panel_mode = "ask"
@@ -358,7 +358,7 @@ def test_ingress_server_accepts_source_neutral_invocations() -> None:
         payload = json.dumps(
             {
                 "source_kind": "ai_tools",
-                "source_label": "AI Tools",
+                "source_label": "AI Sidekick",
                 "source_id": "ai-tools-1",
                 "prompt": "Proofread this text",
                 "intent": "continue",
@@ -383,7 +383,7 @@ def test_ingress_server_accepts_source_neutral_invocations() -> None:
     }
     source, prompt, intent = service.routed_submissions[0]
     assert source.source_kind == "ai_tools"
-    assert source.source_label == "AI Tools"
+    assert source.source_label == "AI Sidekick"
     assert prompt == "Proofread this text"
     assert intent == "continue"
 
@@ -831,7 +831,7 @@ def test_shortcut_endpoint_empty_text_opens_ask_mode_without_submitting() -> Non
 def test_shortcut_result_returns_ready_output_for_completed_run() -> None:
     run = RunRecord.create(
         source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
-        prompt="AI Tools request",
+        prompt="AI Sidekick request",
     )
     run.primary_output = "Use rg instead"
     run.response_text = "Use rg instead"
@@ -851,7 +851,7 @@ def test_shortcut_result_returns_ready_output_for_completed_run() -> None:
 def test_shortcut_result_returns_review_pending_until_sidekick_selection() -> None:
     run = RunRecord.create(
         source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
-        prompt="AI Tools request",
+        prompt="AI Sidekick request",
     )
     run.mark_status(RunStatus.COMPLETED, summary="Done")
     service = StubService(current_run=run)
@@ -876,7 +876,7 @@ def test_shortcut_result_returns_review_pending_until_sidekick_selection() -> No
 def test_shortcut_result_returns_failed_for_terminal_run_states() -> None:
     run = RunRecord.create(
         source=SourceMetadata(source_kind="ai_tools", source_label="Ghostty", source_id="ai-tools-1"),
-        prompt="AI Tools request",
+        prompt="AI Sidekick request",
     )
     run.mark_status(RunStatus.FAILED, summary="Model failed")
     service = StubService(current_run=run)

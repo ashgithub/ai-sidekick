@@ -1,4 +1,4 @@
-"""Shared compact prompt contract for AI Tools runs."""
+"""Shared compact prompt contract for AI Sidekick text runs."""
 
 from __future__ import annotations
 

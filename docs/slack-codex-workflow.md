@@ -50,13 +50,13 @@ The panel is intentionally a compact native sidekick, not a dashboard or browser
 
 The bridge keeps only the current invocation in memory. It does not persist run history, replay transcripts, or maintain a queue file. Restarting the daemon clears the visible run state.
 
-`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, native macOS notifications, function-key toggle, Codex model/thread options, reusable AI Tools thread reset limits, Slack prompt path, AI Text Tools prompt files, and stale-source threshold. The default `codex.cwd` is `~/tmp/codex_ai_tools`, which keeps sidekick-created Codex threads out of the current project directory. The comments in that file document the current options.
+`config/codex_web_panel.yaml` is the single control point for the POC. It controls the loopback server, panel visibility, native macOS notifications, function-key toggle, Codex model/thread options, reusable Sidekick text thread reset limits, Slack prompt path, Sidekick text prompt files, and stale-source threshold. The default `codex.cwd` is `~/tmp/codex_ai_tools`, which keeps sidekick-created Codex threads out of the current project directory. The comments in that file document the current options.
 
 Slack resolver stop conditions are surfaced as explicit run states. If no `@codex` message is found, the run becomes `not_found`. If the latest message is older than `slack.latest_message_max_age_minutes`, the run becomes `stale_source`.
 
 `bin/sidekick` starts the bridge and a hidden pywebview sidekick. Use the configured `F5` Hammerspoon hotkey to toggle it. The panel show/toggle scripts are app-facing helpers under `scripts/internal/`, not normal user commands. Use `bin/sidekick --bridge-only` only when you intentionally want HTTP ingress without the native sidekick window.
 
-For Slack and every other AI Text Tools source, edited Sidekick output is not directly applied. If you change the AI-produced text, the primary action becomes `Review edits`; Sidekick runs the edited draft back through AI, then the reviewed result can be applied to the source app.
+For Slack and every other Sidekick text source, edited Sidekick output is not directly applied. If you change the AI-produced text, the primary action becomes `Review edits`; Sidekick runs the edited draft back through AI, then the reviewed result can be applied to the source app.
 
 If port `8765` is occupied by an older or unrelated process, `bin/sidekick` prints a port diagnostic and exits. Restart on the same default port with:
 
@@ -104,7 +104,7 @@ Use the `Abort` button to interrupt the current in-flight Codex turn. If Codex i
 
 To verify the failure path, stop `bin/sidekick` and press the hotkey again. Expected result: Hammerspoon stops with `Codex bridge is not running` and a `Start: .../bin/sidekick --restart` hint; it should not open Codex.app.
 
-Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, explicit structured `ai_tools` text submissions through `/api/ai-tools`, and a zsh command-generation helper at `bin/codex-nl-shell`. The AI Text Tools Hammerspoon shortcut posts minimal source context to `/api/shortcut`; the bridge resolves app policy and exposes shortcut result polling for paste-back. Hammerspoon does not spawn the Python CLI on the hot path.
+Current scope: this POC supports Slack hotkey ingress, sidekick steering/continuation, explicit structured text submissions through `/api/ai-tools`, and a zsh command-generation helper at `bin/codex-nl-shell`. The Sidekick text Hammerspoon shortcut posts minimal source context to `/api/shortcut`; the bridge resolves app policy and exposes shortcut result polling for paste-back. Hammerspoon does not spawn the Python CLI on the hot path.
 
 ## Status Messages
 

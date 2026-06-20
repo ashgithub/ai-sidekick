@@ -105,7 +105,7 @@ def test_ai_tools_codex_json_completion_preserves_structured_output_shape() -> N
     service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
     run = service.submit_run(
         source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
-        prompt="AI Tools request",
+        prompt="AI Sidekick request",
     )
     payload = {
         "render_kind": "text_pair",
@@ -206,7 +206,7 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
     run = service.submit_run(
         source=SourceMetadata(source_kind="ai_tools", source_label="Slack", source_id="ai-tools-1"),
-        prompt="AI Tools request\n\nRouting rules:\n- old verbose rules\n\nInput:\nOriginal Slack text",
+        prompt="AI Sidekick request\n\nRouting rules:\n- old verbose rules\n\nInput:\nOriginal Slack text",
     )
     run.render_kind = "text_pair"
     run.display_input_text = "Original Slack text"
@@ -230,7 +230,7 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     assert len(client.thread_start_calls) == 1
     assert client.turn_start_calls[-1]["threadId"] == "thread-1"
     review_prompt = client.turn_start_calls[-1]["input"][0]["text"]
-    assert "Review edited AI Tools output. Treat the edited draft as the source of truth." in review_prompt
+    assert "Review edited AI Sidekick output. Treat the edited draft as the source of truth." in review_prompt
     assert '"render_kind":"text_pair"' in review_prompt
     assert "Make Slack text concise and professional." in review_prompt
     assert "App context: Slack" in review_prompt
@@ -243,7 +243,7 @@ def test_review_run_output_starts_follow_up_turn_on_same_run() -> None:
     assert "Edited Slack text" in review_prompt
     assert "Preserve the user's edits unless they conflict with the instructions above." in review_prompt
     assert "Routing rules:" not in review_prompt
-    assert "Original AI Tools request:" not in review_prompt
+    assert "Original AI Sidekick request:" not in review_prompt
     assert reviewed.status is RunStatus.RUNNING
     assert reviewed.primary_output == "Edited Slack text"
     assert reviewed.response_text == "Edited Slack text"
@@ -321,10 +321,10 @@ def test_abort_running_run_interrupts_current_turn_and_marks_cancelled() -> None
 def test_abort_structured_ai_tools_run_without_codex_turn_marks_cancelled() -> None:
     service = CodexBridgeService(client=FakeClient(), notifier=FakeNotifier(), store=ActiveRunStateStore())
     run = RunRecord.create(
-        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Sidekick", source_id="ai-tools-1"),
         prompt="fix this",
     )
-    run.mark_status(RunStatus.RUNNING, summary="AI Tools request running")
+    run.mark_status(RunStatus.RUNNING, summary="AI Sidekick request running")
     service.store.upsert(run)
 
     updated = service.abort_run(run.run_id)
@@ -663,12 +663,12 @@ def test_submit_to_current_thread_routes_by_intent() -> None:
     service = CodexBridgeService(client=client, notifier=FakeNotifier(), store=ActiveRunStateStore())
 
     first = service.submit_or_route(
-        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Sidekick", source_id="ai-tools-1"),
         prompt="Initial task",
         intent="new",
     )
     steered = service.submit_or_route(
-        source=SourceMetadata(source_kind="ai_tools", source_label="AI Tools", source_id="ai-tools-1"),
+        source=SourceMetadata(source_kind="ai_tools", source_label="AI Sidekick", source_id="ai-tools-1"),
         prompt="Steer while running",
         intent="steer",
     )

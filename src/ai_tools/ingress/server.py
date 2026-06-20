@@ -225,7 +225,7 @@ class LocalIngressServer:
                         intent = str(body.get("intent", "new")).strip() or "new"
                         source = SourceMetadata(
                             source_kind=str(body.get("source_kind", "ai_tools")).strip() or "ai_tools",
-                            source_label=str(body.get("source_label", "AI Tools")).strip() or "AI Tools",
+                            source_label=str(body.get("source_label", "AI Sidekick")).strip() or "AI Sidekick",
                             source_id=str(body.get("source_id", "ai-tools")).strip() or "ai-tools",
                         )
                         render_kind = infer_ai_tools_render_kind(nudge)
@@ -288,7 +288,7 @@ class LocalIngressServer:
                             return
                         profile = outer._resolve_shortcut_profile(app)
                         app_context = profile.app_context or app or None
-                        source_label = app or app_context or "AI Tools"
+                        source_label = app or app_context or "AI Sidekick"
                         source = SourceMetadata(
                             source_kind="ai_tools",
                             source_label=source_label,

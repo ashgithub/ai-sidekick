@@ -113,7 +113,7 @@ if /usr/sbin/lsof -nP -tiTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Starting AI Tools Codex bridge on http://127.0.0.1:${PORT}"
+echo "Starting AI Sidekick Codex bridge on http://127.0.0.1:${PORT}"
 echo "Config: ${CONFIG_PATH}"
 echo "Panel URL: ${BASE_URL}/"
 echo "Open panel helper: ./scripts/internal/panel-show.sh"

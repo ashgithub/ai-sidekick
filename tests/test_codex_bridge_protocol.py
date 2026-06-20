@@ -6,7 +6,7 @@ from ai_tools.codex_bridge.protocol import CodexAppServerClient, JsonRpcProtocol
 
 
 def test_send_request_returns_incrementing_id_and_json_payload() -> None:
-    protocol = JsonRpcProtocol(client_name="ai-tools-web-panel", client_version="0.1.0")
+    protocol = JsonRpcProtocol(client_name="ai-sidekick-web-panel", client_version="0.1.0")
 
     first = protocol.build_request("thread/start", {"cwd": "/tmp/demo"})
     second = protocol.build_request("turn/start", {"threadId": "t1", "input": []})
@@ -21,21 +21,21 @@ def test_send_request_returns_incrementing_id_and_json_payload() -> None:
 
 
 def test_initialize_and_initialized_messages_match_expected_shape() -> None:
-    protocol = JsonRpcProtocol(client_name="ai-tools-web-panel", client_version="0.1.0")
+    protocol = JsonRpcProtocol(client_name="ai-sidekick-web-panel", client_version="0.1.0")
 
     initialize = json.loads(protocol.build_initialize_request())
     initialized = json.loads(protocol.build_initialized_notification())
 
     assert initialize["method"] == "initialize"
     assert initialize["params"]["clientInfo"] == {
-        "name": "ai-tools-web-panel",
+        "name": "ai-sidekick-web-panel",
         "version": "0.1.0",
     }
     assert initialized == {"method": "initialized"}
 
 
 def test_turn_interrupt_request_shape_matches_codex_app_server_schema() -> None:
-    protocol = JsonRpcProtocol(client_name="ai-tools-web-panel", client_version="0.1.0")
+    protocol = JsonRpcProtocol(client_name="ai-sidekick-web-panel", client_version="0.1.0")
 
     payload = json.loads(protocol.build_request("turn/interrupt", {"threadId": "thread-1", "turnId": "turn-1"}))
 
@@ -47,7 +47,7 @@ def test_turn_interrupt_request_shape_matches_codex_app_server_schema() -> None:
 
 
 def test_handle_incoming_routes_response_notification_and_server_request() -> None:
-    protocol = JsonRpcProtocol(client_name="ai-tools-web-panel", client_version="0.1.0")
+    protocol = JsonRpcProtocol(client_name="ai-sidekick-web-panel", client_version="0.1.0")
     seen: list[tuple[str, dict]] = []
 
     protocol.on_notification = lambda payload: seen.append(("notification", payload))

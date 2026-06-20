@@ -650,7 +650,7 @@ async function runWithSelectedNudge() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source_kind: "ai_tools",
-        source_label: currentRun.source.source_label || "AI Tools",
+        source_label: currentRun.source.source_label || "AI Sidekick",
         source_id: `ai-tools-panel-${Date.now()}`,
         text: currentRun.display_input_text,
         app_context: currentRun.app_context || "",

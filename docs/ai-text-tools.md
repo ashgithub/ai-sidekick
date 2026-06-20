@@ -1,6 +1,6 @@
-# AI Text Tools
+# Sidekick Text Tools
 
-The AI Text Tools shortcut and CLI submit to the resident Codex sidekick. The legacy Tk GUI has been removed.
+Sidekick text shortcuts and the diagnostic CLI submit to the resident Codex sidekick. The legacy Tk GUI has been removed.
 
 ## Workflow
 
@@ -8,7 +8,7 @@ The AI Text Tools shortcut and CLI submit to the resident Codex sidekick. The le
 2. Codex runs through `codex app-server` using the model configured for that Codex session.
 3. The bridge reads the profile's plain Markdown prompt file from `prompts/`.
 4. The bridge resolves shortcut profiles from `config/codex_web_panel.yaml`, including app context, prompt file, review behavior, thread reuse, and client action.
-5. AI Text Tools use in-memory per-tool reusable Codex threads while the daemon is alive.
+5. Sidekick text tools use in-memory per-tool reusable Codex threads while the daemon is alive.
 6. Codex returns JSON that the sidekick renders as text, text-pair, or alternatives.
 
 The Hammerspoon hot path avoids spawning the Python CLI. It copies selected text, posts minimal JSON to `/api/shortcut`, follows the bridge-returned client action, then pastes reviewed output back into the source app when the profile supports paste-back. Slack and email profiles wait in the sidekick after generation so you can preview the proposed text, then apply the reviewed text. Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code open Ask mode for explain/copy workflows. If you edit any AI-produced output in Sidekick, the primary action changes to `Review edits`; edited output must go through another AI pass before it can be applied to any source app. If no text is selected, the bridge opens the sidekick in Ask mode without submitting automatically. `scripts/dev/sidekick-submit-text.sh` remains available for explicit command-line diagnostics.

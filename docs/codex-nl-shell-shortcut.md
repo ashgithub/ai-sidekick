@@ -1,6 +1,6 @@
 # Codex NL-to-Shell Shortcut
 
-The `ctrl+option+command+/` shortcut is the terminal natural-language-to-shell flow. It is separate from the Hammerspoon `ctrl+option+command+\` AI Text Tools shortcut, which opens Ask mode for Terminal, iTerm2, Ghostty, Codex, Code, Safari, and Chrome through `/api/shortcut`.
+The `ctrl+option+command+/` shortcut is the terminal natural-language-to-shell flow. It is separate from the Hammerspoon `ctrl+option+command+\` Sidekick text shortcut, which opens Ask mode for Terminal, iTerm2, Ghostty, Codex, Code, Safari, and Chrome through `/api/shortcut`.
 
 ## Binding Chain
 

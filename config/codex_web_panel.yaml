@@ -26,7 +26,7 @@ notifications:
 
 # Settings passed to Codex app-server thread creation.
 # Use "inherit" to use ~/.codex/config.toml instead of forcing a POC-specific model.
-# AI Text Tools can reuse in-memory per-tool threads while the daemon is alive.
+# Sidekick text tools can reuse in-memory per-tool threads while the daemon is alive.
 # Restarting the daemon clears those reusable thread ids; no run history is kept.
 codex:
   model: inherit
@@ -42,7 +42,7 @@ codex:
   # repo's skills directory; replace it with a real directory if you want a
   # private scratch copy that the bridge will not overwrite.
   cwd: ~/tmp/codex_ai_tools
-  # Reusable AI Tools threads are reset after either limit to avoid stale
+  # Reusable Sidekick text threads are reset after either limit to avoid stale
   # accumulated context while keeping warm proofread/explain runs fast.
   reusable_thread_max_turns: 20
   reusable_thread_max_age_minutes: 60

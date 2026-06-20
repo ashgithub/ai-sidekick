@@ -17,7 +17,7 @@ def test_build_ai_tools_prompt_uses_compact_shape_specific_contract() -> None:
         render_kind="text_pair",
     )
 
-    assert prompt.startswith("AI Tools request. Do one task on the input only. Return JSON only.")
+    assert prompt.startswith("AI Sidekick request. Do one task on the input only. Return JSON only.")
     assert "App context: Slack" in prompt
     assert "Nudge: proofread" in prompt
     assert "pls fix this" in prompt
@@ -83,7 +83,7 @@ def test_parse_submit_args_defaults_to_sidekick_source() -> None:
     assert args.text == "hello"
     assert args.intent == "continue"
     assert args.source_kind == "ai_tools"
-    assert args.source_label == "AI Tools"
+    assert args.source_label == "AI Sidekick"
 
 
 def test_build_zsh_prompt_requests_one_safe_command() -> None:

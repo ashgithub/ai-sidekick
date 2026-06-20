@@ -23,7 +23,7 @@ def build_ai_tools_prompt(
 ) -> str:
     expected_render_kind = render_kind or infer_ai_tools_render_kind(nudge)
     lines = [
-        "AI Tools request. Do one task on the input only. Return JSON only.",
+        "AI Sidekick request. Do one task on the input only. Return JSON only.",
         "",
         "Output:",
         ai_tools_schema_example(expected_render_kind),
@@ -64,7 +64,7 @@ def strip_command_response(response_text: str) -> str:
 
 
 def parse_submit_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Submit an AI Tools request to the resident Codex sidekick")
+    parser = argparse.ArgumentParser(description="Submit an AI Sidekick request to the resident Codex sidekick")
     parser.add_argument("--text", help="Input text. Defaults to stdin when omitted.")
     parser.add_argument("--app", dest="app_context", help="Application context hint")
     parser.add_argument("--nudge", help="Nudge hint for the request")
@@ -74,7 +74,7 @@ def parse_submit_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wait", action="store_true", help="Wait for the run to finish and print the final response")
     parser.add_argument("--command-output", action="store_true", help="Strip command-generation fences when printing wait output")
     parser.add_argument("--source-kind", default="ai_tools")
-    parser.add_argument("--source-label", default="AI Tools")
+    parser.add_argument("--source-label", default="AI Sidekick")
     parser.add_argument("--source-id", default="ai-tools")
     parser.add_argument("--config", default=None)
     parser.add_argument("--repo-root", default=".")

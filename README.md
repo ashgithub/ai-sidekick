@@ -1,11 +1,11 @@
-# AI Tools
+# AI Sidekick
 
-Python-based local productivity tools for resident Codex workflows, text tools, and Slack shortcut handoff.
+Python-based local Sidekick for resident Codex workflows, text tools, and Slack shortcut handoff.
 
 ## Tools
 
 - Resident Codex Web Panel: local sidekick for shortcut-driven Codex runs.
-- AI Text Tools shortcuts and diagnostic CLI: see `docs/ai-text-tools.md`.
+- Sidekick text shortcuts and diagnostic CLI: see `docs/ai-text-tools.md`.
 - Codex NL-to-shell shortcut, `ctrl+option+command+/`: see `docs/codex-nl-shell-shortcut.md`.
 - Slack Codex workflow, `ctrl+option+command+right`: see `docs/slack-codex-workflow.md`.
 
@@ -26,7 +26,7 @@ Human-facing entry points:
 
 For shortcut testing, start `./bin/sidekick` in a terminal and leave it running. The Slack hotkey does not auto-start the bridge; if the bridge is not reachable, Hammerspoon shows the script path to run.
 
-Configuration lives in `config/codex_web_panel.yaml`. It controls the loopback port, panel visibility, native macOS notifications, function-key panel hotkey, Codex model/thread defaults, Slack prompt path, AI Text Tools shortcut profiles, and the stale-source threshold for latest `@codex` lookup. AI Text Tools profile prompts are plain Markdown files under `prompts/`. The default Codex working directory is `~/tmp/codex_ai_tools`, so sidekick proofread/explain threads do not appear under the current project unless you change `codex.cwd`. The default panel toggle hotkey is `F5`; change `panel.open_hotkey` if browser refresh conflicts with your muscle memory.
+Configuration lives in `config/codex_web_panel.yaml`. It controls the loopback port, panel visibility, native macOS notifications, function-key panel hotkey, Codex model/thread defaults, Slack prompt path, Sidekick text shortcut profiles, and the stale-source threshold for latest `@codex` lookup. Sidekick text profile prompts are plain Markdown files under `prompts/`. The default Codex working directory is `~/tmp/codex_ai_tools`, so sidekick proofread/explain threads do not appear under the current project unless you change `codex.cwd`. The default panel toggle hotkey is `F5`; change `panel.open_hotkey` if browser refresh conflicts with your muscle memory.
 
 The bridge exposes `GET /healthz` for process liveness and `GET /readyz` for shortcut readiness. Readiness verifies the Codex binary is executable before Hammerspoon submits work. Run state is intentionally ephemeral: the bridge keeps only the current invocation in memory, and a restart clears it.
 
@@ -45,11 +45,11 @@ Panel visibility is source-neutral and configurable. The current POC default is 
 Current integration scope:
 1. Slack hotkey ingress posts to `/ingest/slack`.
 2. The sidekick can steer the active turn, continue the current thread, or start a new task.
-3. `ai_tools` CLI submits explicit structured text-tool work to `/api/ai-tools`. Hammerspoon posts only `{app, text, interaction}` to `/api/shortcut`; the bridge resolves app profiles, prompt files, thread reuse, panel behavior, and shortcut results before Hammerspoon pastes reviewed output back into the source app. Slack and email wait for sidekick review before paste-back. Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code open Ask mode for explain/copy workflows. Any Sidekick-edited AI output must first go through `Review edits` before it can be applied.
+3. The Sidekick diagnostic CLI submits explicit structured text-tool work to `/api/ai-tools`. Hammerspoon posts only `{app, text, interaction}` to `/api/shortcut`; the bridge resolves app profiles, prompt files, thread reuse, panel behavior, and shortcut results before Hammerspoon pastes reviewed output back into the source app. Slack and email wait for sidekick review before paste-back. Safari, Chrome, Terminal, iTerm2, Ghostty, Codex, and Code open Ask mode for explain/copy workflows. Any Sidekick-edited AI output must first go through `Review edits` before it can be applied.
 4. The legacy Tk client has been removed; Sidekick is the only supported UI path.
 5. The zsh command helper submits to the sidekick through `bin/codex-nl-shell` and still inserts the generated command for review before Enter.
 
-AI Text Tools use in-memory per-tool reusable Codex threads when submitted with `intent: reuse`. This avoids a fresh `thread/start` for each proofread/explain shortcut while preserving the ephemeral run model: only the current invocation is shown. Reusable threads reset on daemon restart, after `codex.reusable_thread_max_turns` turns, or after `codex.reusable_thread_max_age_minutes`.
+Sidekick text tools use in-memory per-tool reusable Codex threads when submitted with `intent: reuse`. This avoids a fresh `thread/start` for each proofread/explain shortcut while preserving the ephemeral run model: only the current invocation is shown. Reusable threads reset on daemon restart, after `codex.reusable_thread_max_turns` turns, or after `codex.reusable_thread_max_age_minutes`.
 
 ## Development
 

@@ -305,7 +305,7 @@ class CodexBridgeService:
         edited_text: str,
     ) -> str:
         lines = [
-            "Review edited AI Tools output. Treat the edited draft as the source of truth.",
+            "Review edited AI Sidekick output. Treat the edited draft as the source of truth.",
             "Preserve the user's edits unless they conflict with the instructions above.",
             "Make the smallest necessary changes and return JSON only.",
             "",
@@ -666,7 +666,7 @@ class CodexBridgeService:
         run.response_text = run.primary_output
         run.selected_output_label = self._default_output_label(run)
         run.selected_output_text = run.primary_output
-        run.append_trace(kind="structured_output", label=f"Parsed AI Tools output: {render_kind}")
+        run.append_trace(kind="structured_output", label=f"Parsed AI Sidekick output: {render_kind}")
 
     def _parse_json_object(self, text: str) -> dict[str, Any]:
         cleaned = text.strip()

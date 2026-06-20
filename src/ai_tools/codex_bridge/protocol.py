@@ -98,7 +98,7 @@ class CodexAppServerClient:
     ) -> None:
         self.cwd = cwd
         self.protocol = protocol or JsonRpcProtocol(
-            client_name="ai-tools-web-panel",
+            client_name="ai-sidekick-web-panel",
             client_version="0.1.0",
         )
         self.command = command or resolve_codex_command()

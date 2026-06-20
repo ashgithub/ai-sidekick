@@ -86,7 +86,7 @@ local app_configs = {
 local status_messages = {
     processing = "Processing message from %s...",
     queued = "Queued in Codex sidekick for %s.",
-    cancelled = "Cancelled in AI Tools for %s.",
+    cancelled = "Cancelled in AI Sidekick for %s.",
     error = "Error while processing %s: %s",
 }
 
@@ -441,7 +441,7 @@ local function run_processing(trigger_app, appName, config, shortcut_token)
 
             if status ~= 200 then
                 hs.alert.show("Codex sidekick is not running\nStart: " .. web_panel_start_script .. " --restart", 6)
-                log.e("AI Tools sidekick bridge unavailable: status=" .. tostring(status) .. " body=" .. tostring(body))
+                log.e("AI Sidekick bridge unavailable: status=" .. tostring(status) .. " body=" .. tostring(body))
                 restore_clipboard_now(originalClipboard, shortcut_token)
                 return
             end
