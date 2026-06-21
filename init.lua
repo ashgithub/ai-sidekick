@@ -2,7 +2,7 @@ local log = hs.logger.new('TextProcessor', 'debug')
 require("hs.ipc")
 
 -- Paths
-local dir = os.getenv("HOME") .. "/work/code/python/ai_tools"
+local dir = os.getenv("HOME") .. "/work/code/python/ai-sidekick"
 local web_panel_config_script = dir .. "/scripts/internal/config-json.sh"
 local web_panel_start_script = dir .. "/bin/sidekick"
 local ai_tools_sidekick_enabled = true
@@ -526,7 +526,7 @@ hs.hotkey.bind({ "ctrl", "alt", "cmd" }, "\\", processAppText)
 
 hs.alert.show("Text processor loaded – Ctrl+Alt+Cmd+\\", 3)
 
-local slack_codex_workflow = os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/slack_codex_workflow.lua"
+local slack_codex_workflow = os.getenv("HOME") .. "/work/code/python/ai-sidekick/slack_codex_workflow/hammerspoon/slack_codex_workflow.lua"
 if hs.fs.attributes(slack_codex_workflow) then
     dofile(slack_codex_workflow)
 end

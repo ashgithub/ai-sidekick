@@ -4,12 +4,12 @@ Codex NL-to-Shell
 Type English. Press the shortcut. Review the command.
 
 ```text
-╭─ ghostty ~/work/code/python/ai_tools
+╭─ ghostty ~/work/code/python/ai-sidekick
 ╰─$ find the 20 largest markdown files under this repo
 
         press ctrl+option+command+/
 
-╭─ ghostty ~/work/code/python/ai_tools
+╭─ ghostty ~/work/code/python/ai-sidekick
 ╰─$ fd -e md -x du -h {} | sort -hr | head -20
 ```
 
@@ -142,7 +142,7 @@ Step 5: The Sidekick Generates One Command
 File: `~/.zsh/widgets/codex-nl-shell.zsh`
 
 ```zsh
-local helper="$HOME/work/code/python/ai_tools/bin/codex-nl-shell"
+local helper="$HOME/work/code/python/ai-sidekick/bin/codex-nl-shell"
 
 "$helper" "$query" >"$tmp" 2>"$err"
 ```

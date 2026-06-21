@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKFLOW_DIR="${HOME}/work/code/python/ai_tools/slack_codex_workflow"
+WORKFLOW_DIR="${HOME}/work/code/python/ai-sidekick/slack_codex_workflow"
 PROMPT_FILE="${WORKFLOW_DIR}/prompts/codex_worker.md"
 CODEX_BIN="${CODEX_BIN:-/opt/homebrew/bin/codex}"
 

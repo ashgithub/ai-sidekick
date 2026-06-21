@@ -8,7 +8,7 @@ local function script_dir()
     return source:sub(2):match("(.*/)")
 end
 
-local this_script_dir = script_dir() or (os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/")
+local this_script_dir = script_dir() or (os.getenv("HOME") .. "/work/code/python/ai-sidekick/slack_codex_workflow/hammerspoon/")
 local repo_root = this_script_dir:gsub("/slack_codex_workflow/hammerspoon/$", "")
 local manual_daemon_script = repo_root .. "/bin/sidekick"
 local config_script = repo_root .. "/scripts/internal/config-json.sh"

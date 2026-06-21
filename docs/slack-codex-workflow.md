@@ -77,7 +77,7 @@ To temporarily override panel behavior for a manual daemon run:
 Run these checks from the POC worktree:
 
 ```bash
-cd /Users/ashish/work/code/python/ai_tools
+cd /Users/ashish/work/code/python/ai-sidekick
 ./bin/sidekick
 ```
 
@@ -124,5 +124,5 @@ Status is tracked by posted and edited Slack messages, not reactions. The source
 Load the Hammerspoon module from `~/.hammerspoon/init.lua`:
 
 ```lua
-dofile(os.getenv("HOME") .. "/work/code/python/ai_tools/slack_codex_workflow/hammerspoon/slack_codex_workflow.lua")
+dofile(os.getenv("HOME") .. "/work/code/python/ai-sidekick/slack_codex_workflow/hammerspoon/slack_codex_workflow.lua")
 ```
